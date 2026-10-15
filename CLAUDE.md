@@ -14,7 +14,7 @@
   - 見た目は `@remix-run/component` の `css()` と `web/client/tokens.ts`
   - ブラウザへ渡るコードは `web/client/` に置き、`Deno.` を参照しない
 - `ios/` — iPad アプリ（SwiftUI、未着手）
-- `m5/` — M5Stack ファームウェア（ESP-IDF / PlatformIO、未着手）
+- `m5/` — StackChan (K151) のファームウェア（ESP-IDF / PlatformIO、未着手）
 
 ## 規約
 

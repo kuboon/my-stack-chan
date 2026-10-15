@@ -1,7 +1,9 @@
 # my-stack-chan
 
-スタックちゃん (M5Stack) に話しかけると、iPad 経由で返事をしてくれる。
-挙動の一部は Ruby で書いて Wasm にし、iPad からスタックちゃんへ書き込める。
+スタックちゃん (M5Stack StackChan K151)
+に話しかけると返事をしてくれる。ネットが無い場所では iPad が、Wi-Fi があれば
+iPad なしで Cloudflare の AI が頭になる。 挙動の一部は Ruby で書いて Wasm
+にし、iPad からスタックちゃんへ書き込める。
 
 構想: [web/server/docs/concept.md](web/server/docs/concept.md)（GitHub Pages の
 `/docs/concept` でも読める）
