@@ -1,59 +1,66 @@
 ---
-title: iPad アプリ — 音声、LLM、Ruby → Wasm
+title: iPad アプリ — 音声、LLM、Ruby → Wasm、設定
 order: 3
 date: "2026-10-15"
-summary: iPad 側の設計案。STT / TTS / ローカル LLM、Cloudflare AI と Home Assistant、Ruby を Wasm にしてスタックちゃんへ送る仕組み。
+summary: iPad 側の設計案。直結モードの頭 (STT / ローカル LLM / TTS)、ペアリングと設定、Ruby を Wasm にしてスタックちゃんへ送る仕組み。
 ---
 
 `ios/` に置く iPad アプリの設計案。SwiftUI で作り、iPadOS 26 以降を対象にする。
 
+iPad の役割は 2 つ。
+
+- **直結モードの頭**: スタックちゃんが AP のとき、STT / LLM / TTS
+  をすべてオンデバイスでやる。
+- **設定と書き込みの道具**: ペアリング、Wi-Fi・Cloudflare Worker・Home Assistant
+  の設定、Wasm と画像のアップロード。
+
+スタックちゃんが Wi-Fi につながっている (単独モード) ときは、会話は M5 と
+Cloudflare Worker だけで完結し、iPad は要らない。
+
 ## 画面
 
-- **スタックちゃん**: 接続状態、会話ログ、押して話すボタン
-- **接続**: スタックちゃんの AP につなぐ / Wi-Fi 設定 (スキャン結果から SSID
-  を選びパスワードを入力)
+- **スタックちゃん**: 接続状態、会話ログ (直結モード)、押して話すボタン
+- **接続**: スタックちゃんの AP につなぐ、ペアリング (確認コードの表示)
+- **設定**: スタックちゃんに書き込む設定
+  - Wi-Fi (スキャン結果から SSID を選びパスワードを入力)
+  - Cloudflare Worker の URL とデバイス用の鍵
+  - Home Assistant の URL、長期アクセストークン、LLM に触らせるエンティティ
 - **挙動 (Ruby)**: Ruby エディタ、ビルド、アップロード、ロールバック
 - **画像**: 写真やファイルから選んでアップロード
-- **設定**: LLM の切り替え (ローカル / Cloudflare)、Home Assistant の URL
-  とトークン
 
-## 音声と LLM
+## ペアリング
 
-すべてオンデバイスで完結できる構成を基本にし、ネットがあれば上位のものに
-切り替える。
+M5 の API を使えるのは最初にハンドシェイクしたアプリだけ
+([M5 ファームウェアの認証](./m5-firmware#api-の認証))。
 
-| 機能 | オンデバイス (基本)                                            | ネットあり (任意) |
-| ---- | -------------------------------------------------------------- | ----------------- |
-| STT  | Speech フレームワーク (`SpeechAnalyzer` / `SpeechTranscriber`) | Workers AI の STT |
-| LLM  | Foundation Models フレームワーク (Apple のオンデバイス LLM)    | Workers AI の LLM |
-| TTS  | `AVSpeechSynthesizer`                                          | Workers AI の TTS |
+1. 未ペアリングの M5 に X25519 の公開鍵を送り、M5 の公開鍵を受け取る (CryptoKit
+   の `Curve25519.KeyAgreement`)。
+2. 両者の公開鍵から 6 桁の確認コードを作って表示する。M5 の画面と同じなら、
+   ユーザーが M5 をタッチして承認する。
+3. HKDF で鍵を作り、Keychain に保存する。以降のリクエストはこの鍵で HMAC
+   署名し、秘密を含むボディは AES-GCM で暗号化する。
+
+鍵は M5 ごとに 1 つ。iPad を替えるときは M5 側でペアリングを消してから
+やり直す。
+
+## 直結モードの音声と LLM
+
+すべてオンデバイスで完結させる (AP 接続中の iPad にはインターネットが無い)。
+
+| 機能 | 使うもの                                                       |
+| ---- | -------------------------------------------------------------- |
+| STT  | Speech フレームワーク (`SpeechAnalyzer` / `SpeechTranscriber`) |
+| LLM  | Foundation Models フレームワーク (Apple のオンデバイス LLM)    |
+| TTS  | `AVSpeechSynthesizer`                                          |
 
 - Foundation Models が使えない iPad 向けに、MLX Swift や llama.cpp で小さな
   モデルを動かす選択肢を残す。
 - LLM には「スタックちゃんらしさ」のシステムプロンプトと、表情タグ (`[happy]`
-  など) の出し方を指示する。
-- STT は M5 から来た PCM を流し込む。iPad のマイクを使うモードも用意する。
+  など) の出し方を指示する。Worker 側と同じプロンプトを使い、どちらが頭でも
+  同じキャラクターにする。
+- STT は M5 から来た PCM を流し込む (マイクは M5 のものを使う)。
 - TTS の音声は PCM にして M5 へ送り、M5 のスピーカーで鳴らす。
-
-## LLM のバックエンドを切り替える
-
-```swift
-protocol ChatBackend {
-  func reply(to history: [Message], tools: [Tool]) async throws -> Reply
-}
-// LocalBackend (Foundation Models) / CloudflareBackend / ...
-```
-
-- ネットにつながっていて Worker に届けば Cloudflare、そうでなければローカル。
-- Home Assistant に届くときは、HA の操作を **tool** として LLM に渡す (例:
-  `call_service(domain, service, entity_id)`, `get_state(entity_id)`)。
-
-## Home Assistant
-
-- REST API / WebSocket API を長期アクセストークンで呼ぶ。トークンは Keychain
-  に保存。
-- 届くかどうか (`/api/` への疎通) で「自宅モード」を判定する。
-- 公開するエンティティは設定画面で絞る (LLM に家中を触らせない)。
+- 単独モードでネットが落ちたときも、同じ Wi-Fi にいれば iPad が頭を代われる。
 
 ## Ruby → Wasm
 
