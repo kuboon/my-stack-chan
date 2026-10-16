@@ -1,15 +1,47 @@
 # m5 — スタックちゃん ファームウェア
 
-対象は M5Stack 公式 StackChan (SKU: K151、CoreS3)。未着手。設計案は
-[`web/server/docs/m5-firmware.md`](../web/server/docs/m5-firmware.md)。
+対象は M5Stack 公式 StackChan (SKU: K151、CoreS3)。設計は
+[`web/server/docs/m5-firmware.md`](../web/server/docs/m5-firmware.md)、iPad
+アプリとのやり取りは
+[`web/server/docs/protocol.md`](../web/server/docs/protocol.md)。
 
-やること:
+## いまできること (直結モード)
 
-- 顔（m5stack-avatar）、マイク / スピーカー、SCS0009 シリアルサーボ
-- Wi-Fi: AP (`stackchan-XXXX`) → スキャン → STA 接続、mDNS (`stackchan.local`)
-- 最初にハンドシェイクしたアプリとだけ共有鍵を持つ認証
-- HTTP / WebSocket API（ペアリング、設定、Wasm と画像の更新、音声と制御）
-- 単独モード: Cloudflare Worker と WebSocket で会話、LAN 内の Home Assistant
-  を呼ぶ
-- Wasm ランタイム（WAMR）。Ruby 処理系は載せない
-- 不正な Wasm からのロールバック
+- AP `stackchan-XXXX` を立て、Wi-Fi の QR コードとパスワードを画面に出す
+- iPad アプリとペアリング (X25519 + 6 桁の確認コードを画面で承認)。共有鍵は NVS
+- 認証した WebSocket で、マイクの音を iPad へ送り、iPad から来た音声を鳴らす
+- アバター (表情・口パク・吹き出し)、首のサーボ、胴体のタッチ
+- 画面タップで録音開始/停止、画面 10 秒長押しでペアリング解除
+
+## ビルドと書き込み
+
+```sh
+cd m5
+pio run              # ビルド
+pio run -t upload    # USB で書き込み
+pio device monitor   # シリアルログ
+```
+
+PlatformIO と pioarduino (Arduino core 3.x) を使う。ライブラリは GitHub の
+タグで固定している (`platformio.ini`)。
+
+## テスト
+
+```sh
+m5/test/host/run.sh   # ペアリングの暗号をホストで (libmbedtls-dev が要る)
+```
+
+`test/vectors/vectors.json` は `gen_vectors.py` が作り、iPad
+アプリのテストも同じものを使う (`ios/StackChanKit/Tests/.../vectors.json`
+にコピー。CI で一致を確かめる)。
+
+## ファイル
+
+| ファイル               | 役割                                         |
+| ---------------------- | -------------------------------------------- |
+| `src/main.cpp`         | 状態と画面の切り替え、タッチ、コマンドの処理 |
+| `src/app_link.*`       | AP、HTTP、ペアリング、WebSocket              |
+| `src/pairing_crypto.*` | ペアリングと認証の暗号 (mbedtls のみ)        |
+| `src/audio.*`          | マイクの録音、受け取った音声の再生           |
+| `src/screen.*`         | セットアップ画面とアバター                   |
+| `src/settings.*`       | NVS に保存するもの                           |
