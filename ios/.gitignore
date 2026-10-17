@@ -1,0 +1,5 @@
+StackChan.xcodeproj/
+StackChan/Info.plist
+.build/
+.swiftpm/
+DerivedData/

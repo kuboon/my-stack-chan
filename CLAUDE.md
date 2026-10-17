@@ -13,8 +13,14 @@
   - 変更後は `cd web && deno task check && deno task test && deno task build`
   - 見た目は `@remix-run/component` の `css()` と `web/client/tokens.ts`
   - ブラウザへ渡るコードは `web/client/` に置き、`Deno.` を参照しない
-- `ios/` — iPad アプリ（SwiftUI、未着手）
-- `m5/` — StackChan (K151) のファームウェア（ESP-IDF / PlatformIO、未着手）
+- `ios/` — iPad アプリ（SwiftUI、XcodeGen）。端末の要らない部分は
+  `ios/StackChanKit`（`swift test`）
+- `m5/` — StackChan (K151) のファームウェア（PlatformIO + pioarduino、Arduino
+  core 3.x、公式
+  StackChan-BSP）。暗号はホストでテストできる（`m5/test/host/run.sh`）
+- M5 と iPad のやり取りは `web/server/docs/protocol.md`
+  が仕様。両方を変えるときはここを先に直す。ペアリングの暗号は
+  `m5/test/vectors/vectors.json` で両側をテストする
 
 ## 規約
 

@@ -1,0 +1,39 @@
+name: m5
+
+on:
+  push:
+    branches: [main]
+    paths: ["m5/**", ".github/workflows/m5.yml"]
+  pull_request:
+    paths: ["m5/**", ".github/workflows/m5.yml"]
+
+jobs:
+  host-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
+      - run: m5/test/host/run.sh
+      - name: The app's copy of the test vectors is the same file
+        run: diff m5/test/vectors/vectors.json ios/StackChanKit/Tests/StackChanKitTests/vectors.json
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: m5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio
+            m5/.pio/libdeps
+          key: pio-${{ hashFiles('m5/platformio.ini') }}
+      - run: pip install platformio
+      - run: pio run

@@ -1,0 +1,11 @@
+{
+  "app_private": "dwdtCnMYpX08FsFyUbJmRd9ML4frwJkqsXf7pR25LCo=",
+  "app_public": "hSDwCYkwp1R0i33ctD73Wg2/Og0mOBr066SpjqqbTmo=",
+  "device_private": "XasIfmJKikt54X+Lg4AO5m87sSkmGLb9HC+LJ/+I4Os=",
+  "device_public": "3p7bfXt9wbTTW2HC7OQ1Nz+DQ8hbeGdNrfx+FG+IK08=",
+  "shared_secret": "Sl2dW6TOLeFyjjv0gDUPJeB+IclH0Z4zdvCbPB4WF0I=",
+  "pairing_code": "283033",
+  "auth_key": "NDYk7ZBTTKCVJStLmYIU4QJSdIo3o33FTnqTY+aLF/0=",
+  "ws_nonce": "AAECAwQFBgcICQoLDA0ODw==",
+  "ws_mac": "x5F5Pg4YeSagpMhz6d4/6zKMlRjapxq3kb5H1FarzRs="
+}
