@@ -22,7 +22,7 @@ pio run -t upload    # USB で書き込み
 pio device monitor   # シリアルログ
 ```
 
-PlatformIO と pioarduino (Arduino core 3.x) を使う。ライブラリは GitHub の
+PlatformIO Core 6.2.0 以上 (`pio upgrade`) と pioarduino (Arduino core 3.x) を使う。ライブラリは GitHub の
 タグで固定している (`platformio.ini`)。
 
 ## テスト
