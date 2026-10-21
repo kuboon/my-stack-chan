@@ -7,6 +7,8 @@
 
 #include <Arduino.h>
 
+#include "camera.h"
+
 namespace app_link {
 
 enum class CommandType {
@@ -19,6 +21,7 @@ enum class CommandType {
     Face,          // text: the expression
     Look,          // x: yaw -1..1, y: pitch 0..1
     State,         // text: "idle" | "thinking"
+    PhotoTake,     // text: "vga" | "qvga"
 };
 
 struct Command {
@@ -46,6 +49,8 @@ bool connected();
 void sendText(const String& json);
 /// Sends PCM to the authenticated app.
 void sendAudio(const int16_t* samples, size_t count);
+/// Sends a photo to the authenticated app, as a `photo` message.
+bool sendPhoto(const camera::Photo& photo);
 
 /// Pairing as the screen needs it: the state, and the code to show while it waits.
 PairingState pairingState();

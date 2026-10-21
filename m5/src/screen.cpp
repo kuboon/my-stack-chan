@@ -144,4 +144,19 @@ void setListening(bool listening) {
     avatar.setSpeechText(listening ? "きいてるよ" : "");
 }
 
+void setTakingPhoto(bool taking) {
+    if (!avatarShown) return;
+    if (taking) {
+        avatar.setExpression(Expression::Happy);
+        avatar.setSpeechText("とるよ〜");
+        // Let the avatar draw that, then stop it: its frames share the PSRAM with the camera's DMA.
+        delay(150);
+        avatar.suspend();
+    } else {
+        avatar.resume();
+        avatar.setExpression(Expression::Neutral);
+        avatar.setSpeechText("");
+    }
+}
+
 }  // namespace screen

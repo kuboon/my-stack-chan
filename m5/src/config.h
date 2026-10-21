@@ -19,5 +19,9 @@ constexpr uint32_t kUnpairHoldMs = 10000;
 constexpr uint32_t kPairingTimeoutMs = 60000;
 /// How long a new WebSocket has to authenticate.
 constexpr uint32_t kAuthTimeoutMs = 5000;
+/// Frames the camera drops while its exposure settles, before the one it keeps.
+constexpr int kCameraWarmupFrames = 6;
+/// frame2jpg()'s quality, 1 to 100.
+constexpr uint8_t kCameraJpegQuality = 80;
 
 }  // namespace config

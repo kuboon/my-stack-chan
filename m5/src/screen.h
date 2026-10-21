@@ -26,5 +26,7 @@ void setMouth(float ratio);
 void setBalloon(const char* text);
 void setThinking(bool thinking);
 void setListening(bool listening);
+/// The balloon while a photo is taken. The avatar stops moving until it is done.
+void setTakingPhoto(bool taking);
 
 }  // namespace screen

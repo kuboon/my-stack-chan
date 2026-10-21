@@ -5,6 +5,7 @@
 
 #include "app_link.h"
 #include "audio.h"
+#include "camera.h"
 #include "config.h"
 #include "screen.h"
 #include "settings.h"
@@ -37,6 +38,25 @@ void stopListening() {
     audio::update(sendFrame, speechDone);
     screen::setListening(false);
     app_link::sendText("{\"type\":\"listen.end\"}");
+}
+
+void takePhoto(const char* size) {
+    // The shot stops the loop for about a second, which recording and playback cannot afford.
+    if (audio::isListening() || audio::isSpeaking()) {
+        app_link::sendText("{\"type\":\"photo\",\"error\":\"busy\"}");
+        return;
+    }
+    screen::setTakingPhoto(true);
+    camera::Photo photo;
+    bool taken = camera::capture(photo, !strcmp(size, "qvga") ? camera::Size::QVGA : camera::Size::VGA);
+    screen::setTakingPhoto(false);
+    if (!taken) {
+        app_link::sendText("{\"type\":\"photo\",\"error\":\"camera\"}");
+        return;
+    }
+    bool sent = app_link::sendPhoto(photo);
+    free(photo.jpeg);
+    if (!sent) app_link::sendText("{\"type\":\"photo\",\"error\":\"camera\"}");
 }
 
 /// The view the state calls for, drawn when it changes.
@@ -81,6 +101,7 @@ void handleCommand(const app_link::Command& c) {
             break;
         }
         case CommandType::State: screen::setThinking(!strcmp(c.text, "thinking")); break;
+        case CommandType::PhotoTake: takePhoto(c.text); break;
     }
 }
 

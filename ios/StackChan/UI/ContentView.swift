@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var link: DeviceLink
     var conversation: Conversation
+    var camera: RemoteCamera
+    @State private var showingCamera = false
 
     var body: some View {
         NavigationStack {
@@ -15,12 +17,21 @@ struct ContentView: View {
             }
             .navigationTitle("スタックちゃん")
             .toolbar {
+                Button {
+                    showingCamera = true
+                } label: {
+                    Image(systemName: "camera")
+                }
+                .disabled(!link.isConnected)
                 Menu {
                     Button("会話を消す", action: conversation.clear)
                     Button("この iPad のペアリングを消す", role: .destructive, action: link.forgetPairing)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+            }
+            .sheet(isPresented: $showingCamera) {
+                PhotoView(link: link, camera: camera)
             }
         }
     }

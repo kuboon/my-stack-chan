@@ -13,10 +13,20 @@ import Testing
     #expect(DeviceMessage(json: "not json") == nil)
 }
 
+@Test func parsesPhotos() {
+    let json = #"{"type":"photo","width":640,"height":480,"ms":{"init":1,"warmup":2,"shot":3,"jpeg":4,"frames":[6,7]},"missed":5,"jpeg":"/9j/2Q=="}"#
+    #expect(DeviceMessage(json: json) == .photo(
+        jpeg: Data([0xFF, 0xD8, 0xFF, 0xD9]), width: 640, height: 480,
+        timing: PhotoTiming(initMs: 1, warmupMs: 2, shotMs: 3, jpegMs: 4, frameMs: [6, 7], missed: 5)
+    ))
+    #expect(DeviceMessage(json: #"{"type":"photo","error":"busy"}"#) == .photoFailed(reason: "busy"))
+}
+
 @Test func encodesAppMessages() {
     #expect(AppMessage.face(.happy).json == #"{"expression":"happy","type":"face"}"#)
     #expect(AppMessage.state(thinking: true).json == #"{"state":"thinking","type":"state"}"#)
     #expect(AppMessage.speakEnd.json == #"{"type":"speak.end"}"#)
+    #expect(AppMessage.photoTake(size: .qvga).json == #"{"size":"qvga","type":"photo.take"}"#)
 }
 
 @Test func splitsSentencesAndTakesTheTag() {

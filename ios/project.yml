@@ -27,6 +27,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: スタックちゃんと Wi-Fi で直接つながるために使います。
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: スタックちゃんに話しかけた声を文字にするために使います。
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: スタックちゃんのカメラで撮った写真を保存するために使います。
     info:
       path: StackChan/Info.plist
       properties:

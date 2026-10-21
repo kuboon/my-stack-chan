@@ -8,6 +8,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
+#include <mbedtls/base64.h>
 
 #include "audio.h"
 #include "config.h"
@@ -191,6 +192,7 @@ void handleText(AsyncWebSocketClient* client, const String& text) {
     } else if (!strcmp(type, "face")) push(CommandType::Face, doc["expression"] | "neutral");
     else if (!strcmp(type, "look")) push(CommandType::Look, "", doc["yaw"] | 0.0f, doc["pitch"] | 0.0f);
     else if (!strcmp(type, "state")) push(CommandType::State, doc["state"] | "idle");
+    else if (!strcmp(type, "photo.take")) push(CommandType::PhotoTake, doc["size"] | "vga");
 }
 
 void onEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
@@ -317,6 +319,40 @@ void sendAudio(const int16_t* samples, size_t count) {
         id = authedId;
     }
     if (id) ws.binary(id, reinterpret_cast<const uint8_t*>(samples), count * sizeof(int16_t));
+}
+
+bool sendPhoto(const camera::Photo& photo) {
+    uint32_t id;
+    {
+        Guard g;
+        id = authedId;
+    }
+    if (!id) return false;
+    // Written straight into one buffer: the Base64 of a VGA photo is around 100 KB.
+    char frames[96] = "";
+    for (int i = 0, n = 0; i < photo.frames; i++)
+        n += snprintf(frames + n, sizeof frames - n, "%s%u", i ? "," : "", unsigned(photo.frameMs[i]));
+    char head[256];
+    int headLen = snprintf(head, sizeof head,
+                           "{\"type\":\"photo\",\"width\":%d,\"height\":%d,\"ms\":{\"init\":%u,\"warmup\":%u,"
+                           "\"shot\":%u,\"jpeg\":%u,\"frames\":[%s]},\"missed\":%d,\"jpeg\":\"",
+                           photo.width, photo.height, unsigned(photo.initMs), unsigned(photo.warmupMs),
+                           unsigned(photo.shotMs), unsigned(photo.jpegMs), frames, photo.missed);
+    static const char tail[] = "\"}";
+    size_t b64Len = 4 * ((photo.len + 2) / 3);
+    size_t total = headLen + b64Len + sizeof tail;  // tail's NUL is room for mbedtls' own
+    char* buf = static_cast<char*>(ps_malloc(total));
+    if (!buf) return false;
+    memcpy(buf, head, headLen);
+    size_t written = 0;
+    bool ok = mbedtls_base64_encode(reinterpret_cast<unsigned char*>(buf + headLen), b64Len + 1, &written,
+                                    photo.jpeg, photo.len) == 0;
+    if (ok) {
+        memcpy(buf + headLen + written, tail, sizeof tail - 1);
+        ok = ws.text(id, buf, headLen + written + sizeof tail - 1);
+    }
+    free(buf);
+    return ok;
 }
 
 PairingState pairingState() {
