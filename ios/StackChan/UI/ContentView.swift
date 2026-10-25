@@ -3,6 +3,10 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var link: DeviceLink
     var conversation: Conversation
+    var camera: RemoteCamera
+    var wifi: WifiSetup
+    @State private var showingCamera = false
+    @State private var showingWifi = false
 
     var body: some View {
         NavigationStack {
@@ -15,12 +19,26 @@ struct ContentView: View {
             }
             .navigationTitle("スタックちゃん")
             .toolbar {
+                Button {
+                    showingCamera = true
+                } label: {
+                    Image(systemName: "camera")
+                }
+                .disabled(!link.isConnected)
                 Menu {
+                    Button("スタックちゃんの Wi-Fi…") { showingWifi = true }
+                        .disabled(!link.isConnected)
                     Button("会話を消す", action: conversation.clear)
                     Button("この iPad のペアリングを消す", role: .destructive, action: link.forgetPairing)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+            }
+            .sheet(isPresented: $showingCamera) {
+                PhotoView(link: link, camera: camera)
+            }
+            .sheet(isPresented: $showingWifi) {
+                WifiView(link: link, setup: wifi)
             }
         }
     }
@@ -34,10 +52,10 @@ private struct ConnectionPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             switch link.status {
             case .disconnected, .failed:
-                Text("スタックちゃんの画面の QR コードをカメラで読んで Wi-Fi につないでから、「つなぐ」を押してください。")
+                Text("スタックちゃんの画面の QR コードをカメラで読んで Wi-Fi につなぐか、スタックちゃんと同じ Wi-Fi につないでから、「つなぐ」を押してください。")
                     .font(.callout)
                 HStack {
-                    TextField("アドレス", text: $link.host)
+                    TextField("アドレス (空なら自動で探す)", text: $link.host)
                         .textFieldStyle(.roundedBorder)
                         .keyboardType(.numbersAndPunctuation)
                         .autocorrectionDisabled()
@@ -89,6 +107,14 @@ private struct ConversationLog: View {
                     Label(line.text, systemImage: "face.smiling")
                 case .note:
                     Text(line.text).font(.footnote).foregroundStyle(.secondary)
+                case .photo:
+                    if let image = line.image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 240)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
             .listStyle(.plain)

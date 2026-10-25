@@ -3,3 +3,4 @@ StackChan/Info.plist
 .build/
 .swiftpm/
 DerivedData/
+build/

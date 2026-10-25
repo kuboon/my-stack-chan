@@ -1,4 +1,5 @@
 import Foundation
+import StackChanKit
 
 /// Speech to text. Gets the PCM of one recording as it arrives and returns what was said.
 protocol SpeechRecognizer: AnyObject {
@@ -7,6 +8,15 @@ protocol SpeechRecognizer: AnyObject {
     func prepare() async throws
     /// 16 kHz mono samples, as the StackChan sends them; the stream ends with the recording.
     func transcribe(_ audio: AsyncStream<[Int16]>) async throws -> String
+}
+
+/// What StackChan can do besides talking: the language model's tools. Each ChatModel offers them
+/// in its own way (Foundation Models: Tool).
+@MainActor
+protocol StackChanBody: AnyObject {
+    /// Takes a photo with the camera. Whether it was taken.
+    func takePhoto() async -> Bool
+    func look(_ direction: LookDirection)
 }
 
 /// The language model that writes the replies.
@@ -34,5 +44,9 @@ enum Persona {
     返事の最初に、そのときの気持ちを次のどれか 1 つのタグで書いてください:
     [neutral] [happy] [sad] [angry] [doubt] [sleepy]
     例: [happy]こんにちは！今日もいっしょにがんばろうね。
+    あなたには体を動かす道具があります。
+    写真を撮ってと頼まれたら、必ず takePhoto を呼んでください。
+    右・左・上・下・正面を向いてと頼まれたら、必ず look を呼んでください。
+    道具を呼ばずに、撮った・向いたと言ってはいけません。道具の結果を見てから、したことを短く伝えてください。
     """
 }

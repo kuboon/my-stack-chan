@@ -37,6 +37,32 @@ public enum PairingCrypto {
         )
     }
 
+    /// The key that seals the Wi-Fi password of `wifi.connect`: HKDF-SHA256 over the shared key.
+    public static func wifiKey(authKey: SymmetricKey) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: authKey,
+            salt: Data(),
+            info: Data("stackchan-v1-wifi".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    /// `wifi.connect`'s password: AES-256-GCM with the SSID as AAD, the tag after the ciphertext.
+    public static func sealWifiPassword(
+        _ password: String,
+        ssid: String,
+        authKey: SymmetricKey,
+        nonce: AES.GCM.Nonce = AES.GCM.Nonce()
+    ) throws -> (nonce: Data, sealed: Data) {
+        let box = try AES.GCM.seal(
+            Data(password.utf8),
+            using: wifiKey(authKey: authKey),
+            nonce: nonce,
+            authenticating: Data(ssid.utf8)
+        )
+        return (Data(nonce), box.ciphertext + box.tag)
+    }
+
     /// What the app answers the device's `hello` with.
     public static func wsMac(key: SymmetricKey, nonce: Data) -> Data {
         var input = Data("stackchan-ws-v1".utf8)

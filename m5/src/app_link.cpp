@@ -1,16 +1,18 @@
 #include "app_link.h"
 
 #include <ArduinoJson.h>
+#include <algorithm>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <WiFi.h>
 #include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
+#include <mbedtls/base64.h>
 
 #include "audio.h"
 #include "config.h"
+#include "net.h"
 #include "pairing_crypto.h"
 #include "settings.h"
 
@@ -21,9 +23,6 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 QueueHandle_t commands;
 SemaphoreHandle_t lock;  // guards everything below
-
-String apSsid;
-String apPassword;
 
 uint8_t key[32];
 bool hasKey = false;
@@ -54,13 +53,43 @@ struct Guard {
     ~Guard() { xSemaphoreGive(lock); }
 };
 
-void push(CommandType type, const char* text = "", float x = 0, float y = 0) {
+void push(CommandType type, const char* text = "", float x = 0, float y = 0, const char* secret = "") {
     Command c{};
     c.type = type;
     strlcpy(c.text, text ? text : "", sizeof c.text);
+    strlcpy(c.secret, secret, sizeof c.secret);
     c.x = x;
     c.y = y;
     xQueueSend(commands, &c, 0);
+    memset(&c, 0, sizeof c);
+}
+
+/// `wifi.connect`: opens the password and hands it to the loop, or answers bad_request.
+void handleWifiConnect(AsyncWebSocketClient* client, const JsonDocument& doc) {
+    std::string ssid = doc["ssid"] | "";
+    uint8_t nonce[pairing::kWifiNonceSize];
+    uint8_t sealed[64 + pairing::kWifiTagSize];
+    size_t sealedLen = 0;
+    std::string password;
+    bool ok = !ssid.empty() && ssid.size() <= 32 &&
+              pairing::base64Decode(doc["nonce"] | "", nonce, sizeof nonce) &&
+              pairing::base64Decode(doc["password"] | "", sealed, sizeof sealed, sealedLen);
+    if (ok) {
+        uint8_t wifiKey[32];
+        {
+            Guard g;
+            pairing::wifiKey(key, wifiKey);
+        }
+        ok = pairing::openWifiPassword(wifiKey, ssid, nonce, sealed, sealedLen, password) &&
+             password.size() <= 63;
+        memset(wifiKey, 0, sizeof wifiKey);
+    }
+    if (!ok) {
+        client->text("{\"type\":\"wifi.result\",\"ok\":false,\"error\":\"bad_request\"}");
+        return;
+    }
+    push(CommandType::WifiConnect, ssid.c_str(), 0, 0, password.c_str());
+    std::fill(password.begin(), password.end(), '\0');
 }
 
 void sendJson(AsyncWebServerRequest* req, int code, const JsonDocument& doc) {
@@ -73,7 +102,8 @@ void sendJson(AsyncWebServerRequest* req, int code, const JsonDocument& doc) {
 
 void handleInfo(AsyncWebServerRequest* req) {
     JsonDocument doc;
-    doc["name"] = apSsid;
+    doc["name"] = net::name();
+    doc["wifi"] = net::mode() == net::Mode::STA ? "sta" : "ap";
     doc["model"] = STACKCHAN_MODEL;
     doc["firmware"] = STACKCHAN_FIRMWARE_VERSION;
     {
@@ -172,7 +202,7 @@ void handleText(AsyncWebSocketClient* client, const String& text) {
         if (replaced) ws.close(replaced, 4002, "replaced");
         JsonDocument ready;
         ready["type"] = "ready";
-        ready["name"] = apSsid;
+        ready["name"] = net::name();
         String s;
         serializeJson(ready, s);
         client->text(s);
@@ -191,6 +221,10 @@ void handleText(AsyncWebSocketClient* client, const String& text) {
     } else if (!strcmp(type, "face")) push(CommandType::Face, doc["expression"] | "neutral");
     else if (!strcmp(type, "look")) push(CommandType::Look, "", doc["yaw"] | 0.0f, doc["pitch"] | 0.0f);
     else if (!strcmp(type, "state")) push(CommandType::State, doc["state"] | "idle");
+    else if (!strcmp(type, "photo.take")) push(CommandType::PhotoTake, doc["size"] | "vga");
+    else if (!strcmp(type, "wifi.scan")) push(CommandType::WifiScan);
+    else if (!strcmp(type, "wifi.connect")) handleWifiConnect(client, doc);
+    else if (!strcmp(type, "wifi.forget")) push(CommandType::WifiForget);
 }
 
 void onEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
@@ -260,26 +294,12 @@ void onEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, v
     }
 }
 
-String macSuffix() {
-    uint8_t mac[6];
-    WiFi.softAPmacAddress(mac);
-    char buf[5];
-    snprintf(buf, sizeof buf, "%02X%02X", mac[4], mac[5]);
-    return buf;
-}
-
 }  // namespace
 
 void begin() {
     commands = xQueueCreate(16, sizeof(Command));
     lock = xSemaphoreCreateMutex();
     hasKey = settings::authKey(key);
-
-    WiFi.mode(WIFI_AP);
-    apSsid = "stackchan-" + macSuffix();
-    apPassword = settings::apPassword();
-    WiFi.softAP(apSsid.c_str(), apPassword.c_str());
-    WiFi.setSleep(false);
 
     ws.onEvent(onEvent);
     server.addHandler(&ws);
@@ -290,9 +310,6 @@ void begin() {
     server.onNotFound([](AsyncWebServerRequest* req) { req->send(404); });
     server.begin();
 }
-
-const String& ssid() { return apSsid; }
-const String& password() { return apPassword; }
 
 bool poll(Command& out) { return xQueueReceive(commands, &out, 0) == pdTRUE; }
 
@@ -317,6 +334,40 @@ void sendAudio(const int16_t* samples, size_t count) {
         id = authedId;
     }
     if (id) ws.binary(id, reinterpret_cast<const uint8_t*>(samples), count * sizeof(int16_t));
+}
+
+bool sendPhoto(const camera::Photo& photo) {
+    uint32_t id;
+    {
+        Guard g;
+        id = authedId;
+    }
+    if (!id) return false;
+    // Written straight into one buffer: the Base64 of a VGA photo is around 100 KB.
+    char frames[96] = "";
+    for (int i = 0, n = 0; i < photo.frames; i++)
+        n += snprintf(frames + n, sizeof frames - n, "%s%u", i ? "," : "", unsigned(photo.frameMs[i]));
+    char head[256];
+    int headLen = snprintf(head, sizeof head,
+                           "{\"type\":\"photo\",\"width\":%d,\"height\":%d,\"ms\":{\"init\":%u,\"warmup\":%u,"
+                           "\"shot\":%u,\"jpeg\":%u,\"frames\":[%s]},\"missed\":%d,\"jpeg\":\"",
+                           photo.width, photo.height, unsigned(photo.initMs), unsigned(photo.warmupMs),
+                           unsigned(photo.shotMs), unsigned(photo.jpegMs), frames, photo.missed);
+    static const char tail[] = "\"}";
+    size_t b64Len = 4 * ((photo.len + 2) / 3);
+    size_t total = headLen + b64Len + sizeof tail;  // tail's NUL is room for mbedtls' own
+    char* buf = static_cast<char*>(ps_malloc(total));
+    if (!buf) return false;
+    memcpy(buf, head, headLen);
+    size_t written = 0;
+    bool ok = mbedtls_base64_encode(reinterpret_cast<unsigned char*>(buf + headLen), b64Len + 1, &written,
+                                    photo.jpeg, photo.len) == 0;
+    if (ok) {
+        memcpy(buf + headLen + written, tail, sizeof tail - 1);
+        ok = ws.text(id, buf, headLen + written + sizeof tail - 1);
+    }
+    free(buf);
+    return ok;
 }
 
 PairingState pairingState() {

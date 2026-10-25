@@ -54,6 +54,10 @@ summary: スタックちゃん (M5) 側の設計案。ハードウェア、Wi-Fi
 ```
 
 - AP 中もスキャンできるよう、スキャンと接続試行は AP+STA モードで行う。
+- いまの実装では、Wi-Fi の設定は下の HTTP API ではなく、認証した WebSocket の
+  `wifi.scan` / `wifi.connect` / `wifi.forget` で行う
+  ([プロトコル](./protocol))。STA 中も頭は同じ Wi-Fi の iPad で、Worker
+  (単独モード) はまだない。
 - AP のパスワードは端末ごとに生成して NVS に保存し、画面に表示 (QR も)。
 - AP のときは iPad が頭 (直結モード)、STA のときは Cloudflare Worker が頭
   (単独モード)。

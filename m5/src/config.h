@@ -19,5 +19,17 @@ constexpr uint32_t kUnpairHoldMs = 10000;
 constexpr uint32_t kPairingTimeoutMs = 60000;
 /// How long a new WebSocket has to authenticate.
 constexpr uint32_t kAuthTimeoutMs = 5000;
+/// How long boot waits for the saved home Wi-Fi before it starts the AP instead.
+constexpr uint32_t kHomeJoinTimeoutMs = 20000;
+/// How long the app's `wifi.connect` may try.
+constexpr uint32_t kWifiTryTimeoutMs = 15000;
+/// How long after `wifi.result` (ok) or `wifi.forget` the StackChan restarts.
+constexpr uint32_t kWifiRestartDelayMs = 3000;
+/// How long the head stays where `look` put it before the idle motion moves it again.
+constexpr uint32_t kLookHoldMs = 30000;
+/// Frames the camera drops while its exposure settles, before the one it keeps.
+constexpr int kCameraWarmupFrames = 6;
+/// frame2jpg()'s quality, 1 to 100.
+constexpr uint8_t kCameraJpegQuality = 80;
 
 }  // namespace config

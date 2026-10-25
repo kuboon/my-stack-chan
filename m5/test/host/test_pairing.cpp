@@ -67,6 +67,23 @@ int main(int argc, char** argv) {
     wsMac(key, nonce, out);
     check(equalConstantTime(out, mac, 32), "ws mac");
     check(base64Encode(mac, 32) == field(v, "ws_mac"), "base64 encode");
+    uint8_t wkey[32], wnonce[12], sealed[128];
+    size_t sealedLen = 0;
+    check(base64Decode(field(v, "wifi_key"), wkey, 32), "decode wifi_key");
+    check(base64Decode(field(v, "wifi_nonce"), wnonce, 12), "decode wifi_nonce");
+    check(base64Decode(field(v, "wifi_sealed"), sealed, sizeof sealed, sealedLen), "decode wifi_sealed");
+    wifiKey(key, out);
+    check(std::memcmp(out, wkey, 32) == 0, "wifi key");
+    std::string password;
+    const std::string ssid = field(v, "wifi_ssid");
+    check(openWifiPassword(wkey, ssid, wnonce, sealed, sealedLen, password) &&
+              password == field(v, "wifi_password"),
+          "opens the wifi password");
+    check(!openWifiPassword(wkey, ssid + "x", wnonce, sealed, sealedLen, password),
+          "rejects the password for another ssid");
+    sealed[0] ^= 1;
+    check(!openWifiPassword(wkey, ssid, wnonce, sealed, sealedLen, password), "rejects a changed password");
+
     uint8_t zero[32] = {0};
     check(!sharedSecret(devPriv, zero, out, rng, nullptr), "rejects the zero point");
     check(!base64Decode("AAEC", out, 32), "rejects a short key");

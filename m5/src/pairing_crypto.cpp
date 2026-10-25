@@ -1,11 +1,13 @@
 #include "pairing_crypto.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
 #include <mbedtls/base64.h>
 #include <mbedtls/ecdh.h>
 #include <mbedtls/ecp.h>
+#include <mbedtls/gcm.h>
 #include <mbedtls/md.h>
 
 namespace pairing {
@@ -128,6 +130,37 @@ void wsMac(const uint8_t key[kKeySize], const uint8_t nonce[kNonceSize], uint8_t
           kNonceSize, out);
 }
 
+void wifiKey(const uint8_t key[kKeySize], uint8_t out[kKeySize]) {
+    static const char kInfo[] = "stackchan-v1-wifi";
+    static const uint8_t kNoSalt[1] = {0};
+    uint8_t prk[32];
+    hmac2(kNoSalt, 0, key, kKeySize, nullptr, 0, prk);  // HKDF-Extract, the empty salt
+    uint8_t info[sizeof kInfo];                          // info || 0x01
+    std::memcpy(info, kInfo, sizeof kInfo - 1);
+    info[sizeof kInfo - 1] = 0x01;
+    hmac2(prk, sizeof prk, info, sizeof info, nullptr, 0, out);  // HKDF-Expand, one block
+    std::memset(prk, 0, sizeof prk);
+}
+
+bool openWifiPassword(const uint8_t wifiKey[kKeySize], const std::string& ssid,
+                      const uint8_t nonce[kWifiNonceSize], const uint8_t* sealed, size_t len,
+                      std::string& password) {
+    if (len < kWifiTagSize) return false;
+    size_t textLen = len - kWifiTagSize;
+    std::string text(textLen, '\0');
+    mbedtls_gcm_context gcm;
+    mbedtls_gcm_init(&gcm);
+    bool ok = mbedtls_gcm_setkey(&gcm, MBEDTLS_CIPHER_ID_AES, wifiKey, kKeySize * 8) == 0 &&
+              mbedtls_gcm_auth_decrypt(&gcm, textLen, nonce, kWifiNonceSize,
+                                       reinterpret_cast<const unsigned char*>(ssid.data()), ssid.size(),
+                                       sealed + textLen, kWifiTagSize, sealed,
+                                       reinterpret_cast<unsigned char*>(&text[0])) == 0;
+    mbedtls_gcm_free(&gcm);
+    if (ok) password = text;
+    std::fill(text.begin(), text.end(), '\0');
+    return ok;
+}
+
 bool equalConstantTime(const uint8_t* a, const uint8_t* b, size_t len) {
     uint8_t acc = 0;
     for (size_t i = 0; i < len; i++) acc |= a[i] ^ b[i];
@@ -151,6 +184,12 @@ bool base64Decode(const std::string& text, uint8_t* out, size_t len) {
         return false;
     std::memcpy(out, buf, len);
     return true;
+}
+
+bool base64Decode(const std::string& text, uint8_t* out, size_t cap, size_t& len) {
+    len = 0;
+    return mbedtls_base64_decode(out, cap, &len, reinterpret_cast<const unsigned char*>(text.data()),
+                                 text.size()) == 0;
 }
 
 }  // namespace pairing
