@@ -12,6 +12,11 @@ public enum DeviceMessage: Equatable, Sendable {
     case photo(jpeg: Data, width: Int, height: Int, timing: PhotoTiming)
     /// `photo.take` could not be answered: "busy" or "camera".
     case photoFailed(reason: String)
+    /// The answer to `wifi.scan`, strongest first.
+    case wifiNetworks([WifiNetwork])
+    /// The answer to `wifi.connect`: the address on success, or the error.
+    case wifiJoined(ssid: String, ip: String)
+    case wifiFailed(error: String)
     case unknown(type: String)
 
     public init?(json: String) {
@@ -48,8 +53,34 @@ public enum DeviceMessage: Equatable, Sendable {
             } else {
                 self = .photoFailed(reason: object["error"] as? String ?? "camera")
             }
+        case "wifi.networks":
+            let list = object["networks"] as? [[String: Any]] ?? []
+            self = .wifiNetworks(list.compactMap { n in
+                guard let ssid = n["ssid"] as? String else { return nil }
+                return WifiNetwork(ssid: ssid, rssi: n["rssi"] as? Int ?? 0, secure: n["secure"] as? Bool ?? true)
+            })
+        case "wifi.result":
+            if object["ok"] as? Bool == true {
+                self = .wifiJoined(ssid: object["ssid"] as? String ?? "", ip: object["ip"] as? String ?? "")
+            } else {
+                self = .wifiFailed(error: object["error"] as? String ?? "")
+            }
         default: self = .unknown(type: type)
         }
+    }
+}
+
+/// A Wi-Fi network the device sees.
+public struct WifiNetwork: Equatable, Sendable, Identifiable {
+    public var ssid: String
+    public var rssi: Int
+    public var secure: Bool
+    public var id: String { ssid }
+
+    public init(ssid: String, rssi: Int, secure: Bool) {
+        self.ssid = ssid
+        self.rssi = rssi
+        self.secure = secure
     }
 }
 
@@ -84,6 +115,29 @@ public enum PhotoSize: String, CaseIterable, Sendable {
     case qvga
 }
 
+/// Where to turn the head, in the words people use. The values are `look`'s.
+public enum LookDirection: String, CaseIterable, Sendable {
+    case front, right, left, up, down
+
+    /// -1.0 to 1.0, positive to StackChan's right.
+    public var yaw: Double {
+        switch self {
+        case .right: 0.6
+        case .left: -0.6
+        case .front, .up, .down: 0
+        }
+    }
+
+    /// 0.0 to 1.0, higher looks up.
+    public var pitch: Double {
+        switch self {
+        case .up: 0.9
+        case .down: 0
+        case .front, .right, .left: 0.3
+        }
+    }
+}
+
 /// The expressions the avatar has.
 public enum FaceExpression: String, CaseIterable, Sendable {
     case neutral, happy, sad, angry, doubt, sleepy
@@ -100,6 +154,10 @@ public enum AppMessage: Equatable, Sendable {
     case look(yaw: Double, pitch: Double)
     case state(thinking: Bool)
     case photoTake(size: PhotoSize)
+    case wifiScan
+    /// `password` is sealed (PairingCrypto.sealWifiPassword).
+    case wifiConnect(ssid: String, nonce: Data, password: Data)
+    case wifiForget
 
     public var json: String {
         let object: [String: Any] = switch self {
@@ -112,6 +170,11 @@ public enum AppMessage: Equatable, Sendable {
         case .look(let yaw, let pitch): ["type": "look", "yaw": yaw, "pitch": pitch]
         case .state(let thinking): ["type": "state", "state": thinking ? "thinking" : "idle"]
         case .photoTake(let size): ["type": "photo.take", "size": size.rawValue]
+        case .wifiScan: ["type": "wifi.scan"]
+        case .wifiConnect(let ssid, let nonce, let password):
+            ["type": "wifi.connect", "ssid": ssid, "nonce": nonce.base64EncodedString(),
+             "password": password.base64EncodedString()]
+        case .wifiForget: ["type": "wifi.forget"]
         }
         let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
@@ -124,4 +187,6 @@ public struct DeviceInfo: Codable, Equatable, Sendable {
     public var model: String
     public var firmware: String
     public var paired: Bool
+    /// "ap" or "sta". Missing from older firmware, which is always "ap".
+    public var wifi: String?
 }

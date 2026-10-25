@@ -1,21 +1,25 @@
 // StackChan (K151) firmware, direct mode: the StackChan is a Wi-Fi AP and the paired iPad app is
 // its brain (web/server/docs/protocol.md).
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <M5StackChan.h>
 
 #include "app_link.h"
 #include "audio.h"
 #include "camera.h"
 #include "config.h"
+#include "net.h"
 #include "screen.h"
 #include "settings.h"
 
 namespace {
 
-enum class View { None, Setup, Pairing, Waiting, Face };
+enum class View { None, Setup, Pairing, Waiting, HomeUnpaired, HomePaired, Face };
 View view = View::None;
 uint32_t pressStarted = 0;
 uint32_t lastIdleLook = 0;
+uint32_t idleHoldUntil = 0;  // after a `look` from the app
+uint32_t restartAt = 0;      // 0: no restart due
 
 void sendFrame(const int16_t* samples, size_t count) { app_link::sendAudio(samples, count); }
 
@@ -40,6 +44,46 @@ void stopListening() {
     app_link::sendText("{\"type\":\"listen.end\"}");
 }
 
+String joiningSsid;
+String joiningPassword;
+
+/// Answers `wifi.connect` once the attempt is over. Joined: saves it and restarts onto it.
+void reportJoin(net::JoinResult result) {
+    JsonDocument doc;
+    doc["type"] = "wifi.result";
+    doc["ok"] = result == net::JoinResult::Ok;
+    const char* balloon = "";
+    switch (result) {
+        case net::JoinResult::Ok:
+            doc["ssid"] = joiningSsid;
+            doc["ip"] = net::joinAddress();
+            settings::setHomeWifi(joiningSsid, joiningPassword);
+            restartAt = millis() + config::kWifiRestartDelayMs;
+            balloon = "つながったよ！さいきどうするね";
+            break;
+        case net::JoinResult::WrongPassword:
+            doc["error"] = "wrong_password";
+            balloon = "パスワードがちがうみたい";
+            break;
+        case net::JoinResult::NotFound:
+            doc["error"] = "not_found";
+            balloon = "その Wi-Fi がみつからないよ";
+            break;
+        default:
+            doc["error"] = "timeout";
+            balloon = "つながらなかったよ";
+            break;
+    }
+    joiningPassword = "";
+    // On the home Wi-Fi, a failed attempt left it: restart onto the saved one again.
+    if (result != net::JoinResult::Ok && net::mode() == net::Mode::STA)
+        restartAt = millis() + config::kWifiRestartDelayMs;
+    String json;
+    serializeJson(doc, json);
+    app_link::sendText(json);
+    screen::setBalloon(balloon);
+}
+
 void takePhoto(const char* size) {
     // The shot stops the loop for about a second, which recording and playback cannot afford.
     if (audio::isListening() || audio::isSpeaking()) {
@@ -62,16 +106,23 @@ void takePhoto(const char* size) {
 /// The view the state calls for, drawn when it changes.
 void updateView() {
     View want;
+    bool home = net::mode() == net::Mode::STA;
     if (app_link::pairingState() == app_link::PairingState::Waiting) want = View::Pairing;
-    else if (!app_link::paired()) want = View::Setup;
-    else if (!app_link::connected()) want = View::Waiting;
-    else want = View::Face;
+    else if (app_link::connected()) want = View::Face;
+    else if (home) want = app_link::paired() ? View::HomePaired : View::HomeUnpaired;
+    else want = app_link::paired() ? View::Waiting : View::Setup;
     if (want == view) return;
     view = want;
+    String note = net::homeFailed() ? "Wi-Fi「" + net::homeSsid() + "」につながりませんでした" : "";
     switch (view) {
-        case View::Setup: screen::showSetup(app_link::ssid(), app_link::password()); break;
+        case View::Setup: screen::showSetup(net::name(), net::apPassword(), note); break;
         case View::Pairing: screen::showPairingCode(app_link::pairingCode()); break;
-        case View::Waiting: screen::showWaiting(app_link::ssid(), app_link::password()); break;
+        case View::Waiting: screen::showWaiting(net::name(), net::apPassword(), note); break;
+        case View::HomeUnpaired:
+        case View::HomePaired:
+            screen::showOnHomeWifi(net::homeSsid(), net::hostname() + ".local", net::address(),
+                                   view == View::HomePaired);
+            break;
         case View::Face: screen::showFace(); break;
         default: break;
     }
@@ -98,10 +149,24 @@ void handleCommand(const app_link::Command& c) {
             int yaw = constrain(int(c.x * 600), -600, 600);
             int pitch = constrain(int(c.y * 900), 0, 900);
             M5StackChan.Motion.move(yaw, pitch, 400);
+            idleHoldUntil = millis() + config::kLookHoldMs;
             break;
         }
         case CommandType::State: screen::setThinking(!strcmp(c.text, "thinking")); break;
         case CommandType::PhotoTake: takePhoto(c.text); break;
+        case CommandType::WifiScan: net::startScan(); break;
+        case CommandType::WifiConnect:
+            if (net::joining()) break;
+            joiningSsid = c.text;
+            joiningPassword = c.secret;
+            net::startJoin(joiningSsid, joiningPassword);
+            screen::setBalloon("つないでみるね");
+            break;
+        case CommandType::WifiForget:
+            settings::clearHomeWifi();
+            restartAt = millis() + config::kWifiRestartDelayMs;
+            screen::setBalloon("Wi-Fi をわすれたよ");
+            break;
     }
 }
 
@@ -140,7 +205,7 @@ void handleBodyTouch() {
 /// Now and then, look somewhere else, as a living thing would.
 void idleMotion() {
     if (view != View::Face || audio::isSpeaking() || audio::isListening()) return;
-    if (millis() - lastIdleLook < 8000) return;
+    if (millis() - lastIdleLook < 8000 || int32_t(idleHoldUntil - millis()) > 0) return;
     lastIdleLook = millis();
     M5StackChan.Motion.move(random(-300, 301), random(100, 401), 150);
 }
@@ -152,6 +217,7 @@ void setup() {
     settings::begin();
     screen::begin();
     audio::begin();
+    net::begin(screen::showJoining);
     app_link::begin();
 }
 
@@ -160,7 +226,17 @@ void loop() {
     app_link::update();
 
     app_link::Command c;
-    while (app_link::poll(c)) handleCommand(c);
+    while (app_link::poll(c)) {
+        handleCommand(c);
+        memset(c.secret, 0, sizeof c.secret);
+    }
+
+    net::update();
+    String networks;
+    if (net::scanResult(networks)) app_link::sendText(networks);
+    net::JoinResult joined = net::takeJoinResult();
+    if (joined != net::JoinResult::None) reportJoin(joined);
+    if (restartAt && int32_t(millis() - restartAt) >= 0) ESP.restart();
 
     updateView();
     handleTouch();

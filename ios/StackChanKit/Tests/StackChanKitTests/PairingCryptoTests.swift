@@ -17,6 +17,11 @@ struct Vectors: Decodable {
     let auth_key: String
     let ws_nonce: String
     let ws_mac: String
+    let wifi_ssid: String
+    let wifi_password: String
+    let wifi_key: String
+    let wifi_nonce: String
+    let wifi_sealed: String
 
     static func load() throws -> Vectors {
         let url = try #require(Bundle.module.url(forResource: "vectors", withExtension: "json"))
@@ -44,4 +49,15 @@ func bytes(_ base64: String) -> Data { Data(base64Encoded: base64)! }
     let v = try Vectors.load()
     let key = SymmetricKey(data: bytes(v.auth_key))
     #expect(PairingCrypto.wsMac(key: key, nonce: bytes(v.ws_nonce)) == bytes(v.ws_mac))
+}
+
+@Test func wifiPasswordMatchesFirmware() throws {
+    let v = try Vectors.load()
+    let key = SymmetricKey(data: bytes(v.auth_key))
+    #expect(PairingCrypto.wifiKey(authKey: key).withUnsafeBytes { Data($0) } == bytes(v.wifi_key))
+    let sealed = try PairingCrypto.sealWifiPassword(
+        v.wifi_password, ssid: v.wifi_ssid, authKey: key, nonce: AES.GCM.Nonce(data: bytes(v.wifi_nonce))
+    )
+    #expect(sealed.nonce == bytes(v.wifi_nonce))
+    #expect(sealed.sealed == bytes(v.wifi_sealed))
 }

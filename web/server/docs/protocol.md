@@ -2,12 +2,13 @@
 title: 直結モードのプロトコル
 order: 4
 date: "2026-10-16"
-summary: スタックちゃん (M5) と iPad アプリの間のやり取りの仕様。AP、ペアリング、WebSocket の認証、音声と制御メッセージ。
+summary: スタックちゃん (M5) と iPad アプリの間のやり取りの仕様。AP と家の Wi-Fi、ペアリング、WebSocket の認証、音声と制御メッセージ。
 ---
 
-直結モード (スタックちゃんが AP、iPad が頭) で M5 と iPad アプリが話す内容の
-仕様。**ファームウェア (`m5/`) とアプリ (`ios/`) はこの文書に合わせる。**
-変えるときはここを先に直す。
+直結モード (iPad が頭) で M5 と iPad アプリが話す内容の仕様。M5 が AP
+になってそこに iPad がつなぐときも、M5 と iPad が同じ家の Wi-Fi
+にいるときも同じ。**ファームウェア (`m5/`) とアプリ (`ios/`)
+はこの文書に合わせる。** 変えるときはここを先に直す。
 
 ## AP
 
@@ -18,6 +19,22 @@ summary: スタックちゃん (M5) と iPad アプリの間のやり取りの�
 - M5 の画面に SSID・パスワードと、iPad のカメラで読める Wi-Fi の QR コード
   (`WIFI:T:WPA;S:<SSID>;P:<パスワード>;;`) を出す。
 - M5 のアドレスは `192.168.4.1`。HTTP と WebSocket はポート 80。
+
+## 家の Wi-Fi (STA)
+
+iPad アプリから家の Wi-Fi を設定すると ([Wi-Fi の設定](#wi-fi-の設定))、M5
+はそれにつなぐ。iPad も同じ Wi-Fi にいれば、iPad はインターネットにつながった
+まま頭になれる。
+
+- 起動したとき、保存した Wi-Fi があればそれにつなぐ (最長 20 秒待つ)。
+  つながったら AP は立てない。つながらなければ AP を立てる。保存した Wi-Fi
+  は消さず、次に起動したときまた試す。
+- ホスト名は `stackchan-xxxx` (AP の SSID を小文字にしたもの)。mDNS で
+  `stackchan-xxxx.local` と、サービス `_stackchan._tcp` (ポート 80、
+  インスタンス名は `stackchan-XXXX`) を出す。
+- HTTP と WebSocket は AP のときと同じ。ペアリングも同じ手順でできる (承認は M5
+  の画面でするので、同じ Wi-Fi のほかの機械が勝手にはできない)。
+- 一度切れても、M5 は自分でつなぎ直す。
 
 ## HTTP
 
@@ -37,9 +54,12 @@ summary: スタックちゃん (M5) と iPad アプリの間のやり取りの�
   "name": "stackchan-1A2B",
   "model": "K151",
   "firmware": "0.1.0",
-  "paired": false
+  "paired": false,
+  "wifi": "ap"
 }
 ```
+
+`wifi` は `ap` (自分が AP) か `sta` (家の Wi-Fi につながっている)。
 
 ### ペアリング
 
@@ -107,22 +127,24 @@ M5 → アプリ
 
 アプリ → M5
 
-| `type`         | 内容                                                                                     |
-| -------------- | ---------------------------------------------------------------------------------------- |
-| `listen.start` | 録音を始めさせる (アプリの「押して話す」ボタン)                                          |
-| `listen.end`   | 録音を止めさせる                                                                         |
-| `speak.start`  | この後に音声が続く。`"text"` があれば吹き出しに出す                                      |
-| `speak.end`    | 音声を送り終えた。M5 は鳴らし終えたら `speak.done` を返す                                |
-| `face`         | 表情。`"expression": "neutral" \| "happy" \| "sad" \| "angry" \| "doubt" \| "sleepy"`    |
-| `look`         | 首を動かす。`"yaw"` (-1.0〜1.0)、`"pitch"` (0.0〜1.0)                                    |
-| `state`        | アプリの状態を顔に出す。`"state": "idle" \| "thinking"`                                  |
-| `photo.take`   | カメラで写真を撮らせる。`"size": "vga" \| "qvga"` (省略時 `vga`)。M5 は `photo` で答える |
+| `type`         | 内容                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listen.start` | 録音を始めさせる (アプリの「押して話す」ボタン)                                                                                             |
+| `listen.end`   | 録音を止めさせる                                                                                                                            |
+| `speak.start`  | この後に音声が続く。`"text"` があれば吹き出しに出す                                                                                         |
+| `speak.end`    | 音声を送り終えた。M5 は鳴らし終えたら `speak.done` を返す                                                                                   |
+| `face`         | 表情。`"expression": "neutral" \| "happy" \| "sad" \| "angry" \| "doubt" \| "sleepy"`                                                       |
+| `look`         | 首を動かす。`"yaw"` (-1.0〜1.0、正がスタックちゃんから見て右)、`"pitch"` (0.0〜1.0、大きいほど上)。この後 30 秒は M5 が自分で首を動かさない |
+| `state`        | アプリの状態を顔に出す。`"state": "idle" \| "thinking"`                                                                                     |
+| `photo.take`   | カメラで写真を撮らせる。`"size": "vga" \| "qvga"` (省略時 `vga`)。M5 は `photo` で答える                                                    |
 
 ### 録音の始め方と止め方
 
 - M5 の画面をタップすると録音を始め、もう一度タップすると止める。最長 15 秒で
   自動で止める。
 - アプリから `listen.start` / `listen.end` でも同じことができる。
+- アプリは届いた音の大きさで話し終わりを見つけ (声のあと 0.8 秒静か)、
+  `listen.end` を送って止める。6 秒たっても声がなければ、そこで止める。
 - しゃべっている間 (`speak.start` から `speak.done` まで) は録音しない (CoreS3
   はマイクとスピーカーを同時に使えない)。
 
@@ -170,6 +192,51 @@ JPEG を Base64 にして `photo` で返す。大きさは `size` で選ぶ: `vg
   間は撮らない。撮っている間、M5 の顔は吹き出しで「とるよ〜」と出し、アバターの
   動きを止める (アバターの描画とカメラの DMA が同じ PSRAM を使うため)。
 - 写真はバイナリフレームでは送らない (バイナリフレームは音声だけ)。
+
+### Wi-Fi の設定
+
+アプリ → M5
+
+| `type`         | 内容                                                       |
+| -------------- | ---------------------------------------------------------- |
+| `wifi.scan`    | 周りの Wi-Fi を探させる。M5 は `wifi.networks` で答える    |
+| `wifi.connect` | 家の Wi-Fi につながせる。M5 は `wifi.result` で答える      |
+| `wifi.forget`  | 保存した Wi-Fi を消させる。M5 は再起動して AP で立ち上がる |
+
+M5 → アプリ
+
+```json
+{ "type": "wifi.networks", "networks": [{ "ssid": "home", "rssi": -52, "secure": true }] }
+{ "type": "wifi.result", "ok": true, "ssid": "home", "ip": "192.168.1.23" }
+{ "type": "wifi.result", "ok": false, "error": "wrong_password" }
+```
+
+- `wifi.networks` は SSID ごとに 1 つ (いちばん強いもの)、強い順に最大 20。 SSID
+  の無いものは除く。
+- `wifi.result` の `error`: `wrong_password`、`not_found` (その SSID が無い)、
+  `timeout` (15 秒でつながらない)、`bad_request` (パスワードを開けない など)。
+- つながったら、M5 は Wi-Fi を NVS に保存し、`wifi.result` を送って 3
+  秒後に再起動し、家の Wi-Fi で立ち上がる。
+- つなぐのを試す間、M5 の AP のチャンネルが家の Wi-Fi に合わせて変わるので、
+  iPad との接続が切れることがある。M5 は結果を画面にも出す。
+
+`wifi.connect` のパスワードは共有鍵から作った鍵で暗号化して送る。
+
+```json
+{
+  "type": "wifi.connect",
+  "ssid": "home",
+  "nonce": "AAECAwQFBgcICQoL",
+  "password": "…"
+}
+```
+
+- 鍵:
+  `HKDF-SHA256(IKM = 共有鍵, salt = なし, info = "stackchan-v1-wifi", L = 32)`
+- `password`: `AES-256-GCM(鍵, nonce, 平文 = パスワード, AAD = SSID)` の暗号文の
+  後ろに 16 バイトのタグをつけたもの。`nonce` は 12 バイトの乱数。
+- パスワードの無い Wi-Fi は空の文字列を暗号化する。
+- テストベクタは `m5/test/vectors/vectors.json` の `wifi_*`。
 
 ### 会話の流れ
 

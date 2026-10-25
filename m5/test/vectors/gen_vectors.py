@@ -10,10 +10,14 @@ import json
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 APP_PRIV = bytes.fromhex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
 DEVICE_PRIV = bytes.fromhex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
 NONCE = bytes(range(16))
+WIFI_SSID = "おうちの Wi-Fi"
+WIFI_PASSWORD = "p@ss word 123"
+WIFI_NONCE = bytes(range(12))
 
 
 def raw_pub(priv: X25519PrivateKey) -> bytes:
@@ -35,6 +39,8 @@ digest = hashlib.sha256(b"stackchan-pair-v1" + device_pub + app_pub).digest()
 code = f"{int.from_bytes(digest[:4], 'big') % 1_000_000:06d}"
 key = hkdf_sha256(shared, app_pub + device_pub, b"stackchan-v1-auth")
 mac = hmac.new(key, b"stackchan-ws-v1" + NONCE, hashlib.sha256).digest()
+wifi_key = hkdf_sha256(key, b"", b"stackchan-v1-wifi")
+wifi_sealed = AESGCM(wifi_key).encrypt(WIFI_NONCE, WIFI_PASSWORD.encode(), WIFI_SSID.encode())
 
 b64 = lambda b: base64.b64encode(b).decode()
 print(json.dumps({
@@ -47,4 +53,9 @@ print(json.dumps({
     "auth_key": b64(key),
     "ws_nonce": b64(NONCE),
     "ws_mac": b64(mac),
-}, indent=2))
+    "wifi_ssid": WIFI_SSID,
+    "wifi_password": WIFI_PASSWORD,
+    "wifi_key": b64(wifi_key),
+    "wifi_nonce": b64(WIFI_NONCE),
+    "wifi_sealed": b64(wifi_sealed),
+}, indent=2, ensure_ascii=False))

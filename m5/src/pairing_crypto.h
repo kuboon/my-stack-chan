@@ -13,6 +13,8 @@ namespace pairing {
 
 constexpr size_t kKeySize = 32;
 constexpr size_t kNonceSize = 16;
+constexpr size_t kWifiNonceSize = 12;
+constexpr size_t kWifiTagSize = 16;
 
 /// A random-bytes source with mbedtls's f_rng signature.
 using Rng = int (*)(void* ctx, unsigned char* out, size_t len);
@@ -38,6 +40,16 @@ void authKey(const uint8_t shared[kKeySize], const uint8_t appPub[kKeySize],
 /// HMAC-SHA256(key, "stackchan-ws-v1" || nonce): what the app sends to authenticate a WebSocket.
 void wsMac(const uint8_t key[kKeySize], const uint8_t nonce[kNonceSize], uint8_t out[kKeySize]);
 
+/// HKDF-SHA256(key, salt = none, info = "stackchan-v1-wifi"), 32 bytes: the key that seals the
+/// Wi-Fi password of `wifi.connect`.
+void wifiKey(const uint8_t key[kKeySize], uint8_t out[kKeySize]);
+
+/// Opens `wifi.connect`'s password: AES-256-GCM with the SSID as AAD, the tag after the
+/// ciphertext. False if it was not sealed with this key for this SSID.
+bool openWifiPassword(const uint8_t wifiKey[kKeySize], const std::string& ssid,
+                      const uint8_t nonce[kWifiNonceSize], const uint8_t* sealed, size_t len,
+                      std::string& password);
+
 /// Compares two buffers in time independent of where they differ.
 bool equalConstantTime(const uint8_t* a, const uint8_t* b, size_t len);
 
@@ -45,5 +57,8 @@ std::string base64Encode(const uint8_t* data, size_t len);
 
 /// Decodes standard Base64 into exactly `len` bytes. False if it does not decode to that length.
 bool base64Decode(const std::string& text, uint8_t* out, size_t len);
+
+/// Decodes standard Base64 of at most `cap` bytes; `len` gets how many.
+bool base64Decode(const std::string& text, uint8_t* out, size_t cap, size_t& len);
 
 }  // namespace pairing

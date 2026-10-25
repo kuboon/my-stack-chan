@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import StackChanKit
+import UIKit
 
 /// Direct mode's brain: hears a recording from the StackChan, thinks of a reply, and sends it back
 /// as speech (web/server/docs/protocol.md, "会話の流れ").
@@ -11,10 +12,11 @@ final class Conversation {
     }
 
     struct Line: Identifiable {
-        enum Role { case user, stackchan, note }
+        enum Role { case user, stackchan, note, photo }
         let id = UUID()
         let role: Role
-        let text: String
+        var text = ""
+        var image: UIImage?
     }
 
     private(set) var phase: Phase = .idle
@@ -23,16 +25,21 @@ final class Conversation {
 
     // The backends, each behind a protocol so that another can replace it (speech.cpp and the like).
     @ObservationIgnored var recognizer: any SpeechRecognizer = AppleSpeechRecognizer()
-    @ObservationIgnored var chat: any ChatModel = FoundationModelsChat()
+    @ObservationIgnored var chat: any ChatModel
     @ObservationIgnored var synthesizer: any SpeechSynthesizer = AppleSpeechSynthesizer()
 
     @ObservationIgnored private let link: DeviceLink
     @ObservationIgnored private var audio: AsyncStream<[Int16]>.Continuation?
     @ObservationIgnored private var transcription: Task<String, Error>?
     @ObservationIgnored private var speechStarted = false
+    @ObservationIgnored private var endOfSpeech = EndOfSpeechDetector()
+    @ObservationIgnored private var endSent = false
 
-    init(link: DeviceLink) {
+    init(link: DeviceLink, body: DeviceBody) {
         self.link = link
+        chat = FoundationModelsChat(body: body)
+        body.onPhoto = { [weak self] in self?.lines.append(Line(role: .photo, image: $0)) }
+        body.onNote = { [weak self] in self?.note($0) }
     }
 
     /// Downloads the speech model while there is still internet (before joining the StackChan's AP).
@@ -69,7 +76,13 @@ final class Conversation {
     }
 
     func handleAudio(_ data: Data) {
-        audio?.yield(PCM.samples(from: data))
+        let samples = PCM.samples(from: data)
+        audio?.yield(samples)
+        // Stop the recording when the speaker has stopped, instead of waiting for a second tap.
+        if phase == .listening, !endSent, endOfSpeech.append(samples) != nil {
+            endSent = true
+            link.send(.listenEnd)
+        }
     }
 
     // MARK: - From the screen
@@ -93,6 +106,8 @@ final class Conversation {
         audio = continuation
         let recognizer = self.recognizer
         transcription = Task { try await recognizer.transcribe(stream) }
+        endOfSpeech = EndOfSpeechDetector()
+        endSent = false
         phase = .listening
     }
 

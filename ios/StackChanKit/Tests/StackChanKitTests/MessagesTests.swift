@@ -22,11 +22,29 @@ import Testing
     #expect(DeviceMessage(json: #"{"type":"photo","error":"busy"}"#) == .photoFailed(reason: "busy"))
 }
 
+@Test func parsesWifiMessages() {
+    #expect(DeviceMessage(json: #"{"type":"wifi.networks","networks":[{"ssid":"home","rssi":-50,"secure":true}]}"#)
+        == .wifiNetworks([WifiNetwork(ssid: "home", rssi: -50, secure: true)]))
+    #expect(DeviceMessage(json: #"{"type":"wifi.result","ok":true,"ssid":"home","ip":"192.168.1.9"}"#)
+        == .wifiJoined(ssid: "home", ip: "192.168.1.9"))
+    #expect(DeviceMessage(json: #"{"type":"wifi.result","ok":false,"error":"wrong_password"}"#)
+        == .wifiFailed(error: "wrong_password"))
+    #expect(AppMessage.wifiConnect(ssid: "home", nonce: Data([0]), password: Data([1])).json
+        == #"{"nonce":"AA==","password":"AQ==","ssid":"home","type":"wifi.connect"}"#)
+}
+
 @Test func encodesAppMessages() {
     #expect(AppMessage.face(.happy).json == #"{"expression":"happy","type":"face"}"#)
     #expect(AppMessage.state(thinking: true).json == #"{"state":"thinking","type":"state"}"#)
     #expect(AppMessage.speakEnd.json == #"{"type":"speak.end"}"#)
     #expect(AppMessage.photoTake(size: .qvga).json == #"{"size":"qvga","type":"photo.take"}"#)
+}
+
+@Test func looksWhereItIsTold() {
+    #expect(LookDirection.right.yaw > 0 && LookDirection.left.yaw < 0)
+    #expect(LookDirection.front.yaw == 0)
+    #expect(LookDirection.up.pitch > LookDirection.front.pitch)
+    #expect(LookDirection.front.pitch > LookDirection.down.pitch)
 }
 
 @Test func splitsSentencesAndTakesTheTag() {

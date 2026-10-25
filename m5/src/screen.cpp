@@ -38,6 +38,15 @@ void drawWifi(const String& ssid, const String& password, int y) {
     d.print(password);
 }
 
+void drawNote(const String& note) {
+    if (note.isEmpty()) return;
+    auto& d = M5.Display;
+    d.setFont(&fonts::lgfxJapanGothic_16);
+    d.setTextColor(TFT_ORANGE, TFT_BLACK);
+    d.setCursor(8, 150);
+    d.print(note);
+}
+
 }  // namespace
 
 void begin() {
@@ -45,11 +54,12 @@ void begin() {
     M5.Display.fillScreen(TFT_BLACK);
 }
 
-void showSetup(const String& ssid, const String& password) {
+void showSetup(const String& ssid, const String& password, const String& note) {
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
     drawWifi(ssid, password, 10);
+    drawNote(note);
     d.setFont(&fonts::lgfxJapanGothic_16);
     d.setTextColor(TFT_YELLOW, TFT_BLACK);
     d.setCursor(8, 170);
@@ -81,11 +91,12 @@ void showPairingCode(const String& code) {
     d.setTextDatum(top_left);
 }
 
-void showWaiting(const String& ssid, const String& password) {
+void showWaiting(const String& ssid, const String& password, const String& note) {
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
     drawWifi(ssid, password, 10);
+    drawNote(note);
     d.setFont(&fonts::lgfxJapanGothic_16);
     d.setTextColor(TFT_CYAN, TFT_BLACK);
     d.setCursor(8, 170);
@@ -93,6 +104,41 @@ void showWaiting(const String& ssid, const String& password) {
     d.setTextColor(TFT_DARKGREY, TFT_BLACK);
     d.setCursor(8, 200);
     d.print("10 秒長押しでペアリングを解除");
+}
+
+void showJoining(const String& ssid) {
+    hideAvatar();
+    auto& d = M5.Display;
+    d.fillScreen(TFT_BLACK);
+    d.setFont(&fonts::lgfxJapanGothic_16);
+    d.setTextColor(TFT_WHITE, TFT_BLACK);
+    d.setCursor(8, 90);
+    d.print("Wi-Fi「" + ssid + "」に");
+    d.setCursor(8, 114);
+    d.print("つないでいます…");
+}
+
+void showOnHomeWifi(const String& ssid, const String& host, const String& address, bool paired) {
+    hideAvatar();
+    auto& d = M5.Display;
+    d.fillScreen(TFT_BLACK);
+    d.setFont(&fonts::lgfxJapanGothic_16);
+    d.setTextColor(TFT_WHITE, TFT_BLACK);
+    d.setCursor(8, 12);
+    d.print("Wi-Fi「" + ssid + "」につながっています");
+    d.setTextColor(TFT_GREENYELLOW, TFT_BLACK);
+    d.setCursor(8, 48);
+    d.print(host);
+    d.setCursor(8, 72);
+    d.print(address);
+    d.setTextColor(paired ? TFT_CYAN : TFT_YELLOW, TFT_BLACK);
+    d.setCursor(8, 120);
+    d.print("iPad も同じ Wi-Fi につなぎ、");
+    d.setCursor(8, 144);
+    d.print(paired ? "アプリで「つなぐ」を押してください" : "アプリでペアリングしてください");
+    d.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    d.setCursor(8, 200);
+    d.print(paired ? "10 秒長押しでペアリングを解除" : "");
 }
 
 void showFace() {

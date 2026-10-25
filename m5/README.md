@@ -12,6 +12,9 @@
 - 認証した WebSocket で、マイクの音を iPad へ送り、iPad から来た音声を鳴らす
 - アバター (表情・口パク・吹き出し)、首のサーボ、胴体のタッチ
 - 画面タップで録音開始/停止、画面 10 秒長押しでペアリング解除
+- アプリから `photo.take` でカメラ (GC0308) で撮り、JPEG で返す
+- アプリから家の Wi-Fi を設定すると、次からはそれにつなぐ (`stackchan-xxxx.local`、
+  `_stackchan._tcp`)。つながらなければ AP に戻る
 
 ## ビルドと書き込み
 
@@ -40,7 +43,9 @@ m5/test/host/run.sh   # ペアリングの暗号をホストで (libmbedtls-dev 
 | ファイル               | 役割                                         |
 | ---------------------- | -------------------------------------------- |
 | `src/main.cpp`         | 状態と画面の切り替え、タッチ、コマンドの処理 |
-| `src/app_link.*`       | AP、HTTP、ペアリング、WebSocket              |
+| `src/app_link.*`       | HTTP、ペアリング、WebSocket                  |
+| `src/net.*`            | AP と家の Wi-Fi、スキャン、mDNS              |
+| `src/camera.*`         | カメラで 1 枚撮って JPEG にする              |
 | `src/pairing_crypto.*` | ペアリングと認証の暗号 (mbedtls のみ)        |
 | `src/audio.*`          | マイクの録音、受け取った音声の再生           |
 | `src/screen.*`         | セットアップ画面とアバター                   |

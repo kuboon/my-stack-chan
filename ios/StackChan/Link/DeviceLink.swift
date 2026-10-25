@@ -3,8 +3,9 @@ import Foundation
 import Observation
 import StackChanKit
 
-/// The connection to one StackChan in direct mode: pairing over HTTP, then the authenticated
-/// WebSocket (web/server/docs/protocol.md).
+/// The connection to one StackChan in direct mode: finding it, pairing over HTTP, then the
+/// authenticated WebSocket (web/server/docs/protocol.md). The StackChan is either its own AP or
+/// on the same home Wi-Fi as the iPad.
 @MainActor @Observable
 final class DeviceLink {
     enum Status: Equatable {
@@ -21,6 +22,7 @@ final class DeviceLink {
         case pairedWithAnother
         case pairingRejected
         case authFailed
+        case notFound
 
         var errorDescription: String? {
             switch self {
@@ -28,13 +30,18 @@ final class DeviceLink {
             case .pairedWithAnother: "スタックちゃんは別のアプリとペアリング済みです。スタックちゃんの画面を 10 秒長押しして解除してください。"
             case .pairingRejected: "ペアリングが承認されませんでした。"
             case .authFailed: "認証に失敗しました。もう一度つないでください。"
+            case .notFound: "スタックちゃんが見つかりません。iPad をスタックちゃんの Wi-Fi か、スタックちゃんと同じ Wi-Fi につないでください。"
             }
         }
     }
 
     var status: Status = .disconnected
-    /// The StackChan's address. In direct mode it is the AP's own address.
-    var host = "192.168.4.1"
+    /// The StackChan's address as the user typed it. Empty: find it (Bonjour, then the AP's
+    /// own address).
+    var host = ""
+    /// Where the StackChan was found, and on which Wi-Fi it is: "ap" or "sta".
+    private(set) var activeHost = ""
+    private(set) var deviceWifi: String?
 
     @ObservationIgnored var onMessage: (@MainActor (DeviceMessage) -> Void)?
     @ObservationIgnored var onAudio: (@MainActor (Data) -> Void)?
@@ -43,6 +50,10 @@ final class DeviceLink {
     @ObservationIgnored private var socket: URLSessionWebSocketTask?
     @ObservationIgnored private var outbox: AsyncStream<URLSessionWebSocketTask.Message>.Continuation?
     @ObservationIgnored private var deviceName: String?
+    @ObservationIgnored private var authKey: SymmetricKey?
+
+    /// The StackChan's own address while it is the AP.
+    static let apHost = "192.168.4.1"
 
     var isConnected: Bool {
         if case .connected = status { true } else { false }
@@ -52,7 +63,8 @@ final class DeviceLink {
         disconnect()
         status = .connecting
         do {
-            let info = try await fetchInfo()
+            let info = try await locate()
+            deviceWifi = info.wifi ?? "ap"
             var key = KeyStore.key(for: info.name)
             if key != nil, !info.paired {
                 // The StackChan forgot the pairing; so do we.
@@ -74,6 +86,7 @@ final class DeviceLink {
         outbox = nil
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
+        authKey = nil
         status = .disconnected
     }
 
@@ -81,6 +94,13 @@ final class DeviceLink {
     func forgetPairing() {
         if let deviceName { KeyStore.delete(for: deviceName) }
         disconnect()
+    }
+
+    /// Has the StackChan join a home Wi-Fi; it answers with `wifi.result`.
+    func joinWifi(ssid: String, password: String) throws {
+        guard let authKey else { throw LinkError.authFailed }
+        let sealed = try PairingCrypto.sealWifiPassword(password, ssid: ssid, authKey: authKey)
+        send(.wifiConnect(ssid: ssid, nonce: sealed.nonce, password: sealed.sealed))
     }
 
     func send(_ message: AppMessage) {
@@ -94,12 +114,28 @@ final class DeviceLink {
 
     // MARK: - HTTP
 
-    private func url(_ path: String, scheme: String = "http") -> URL {
-        URL(string: "\(scheme)://\(host)\(path)")!
+    private func url(_ path: String, scheme: String = "http", host: String? = nil) -> URL {
+        URL(string: "\(scheme)://\(host ?? activeHost)\(path)")!
     }
 
-    private func fetchInfo() async throws -> DeviceInfo {
-        let (data, response) = try await session.data(from: url("/info"))
+    /// The StackChan's `/info`, from the typed address, or else the first that answers among those
+    /// Bonjour finds and the AP's address.
+    private func locate() async throws -> DeviceInfo {
+        let typed = host.trimmingCharacters(in: .whitespaces)
+        let candidates = typed.isEmpty ? await DeviceFinder.find() + [Self.apHost] : [typed]
+        for candidate in candidates {
+            if let info = try? await fetchInfo(host: candidate) {
+                activeHost = candidate
+                return info
+            }
+        }
+        throw LinkError.notFound
+    }
+
+    private func fetchInfo(host: String) async throws -> DeviceInfo {
+        var request = URLRequest(url: url("/info", host: host))
+        request.timeoutInterval = 3
+        let (data, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LinkError.badResponse }
         return try JSONDecoder().decode(DeviceInfo.self, from: data)
     }
@@ -161,6 +197,7 @@ final class DeviceLink {
         else { throw LinkError.authFailed }
 
         deviceName = name
+        authKey = key
         status = .connected(name: name)
 
         // One task sends, so that messages and audio keep their order.

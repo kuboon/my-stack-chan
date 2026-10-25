@@ -16,6 +16,7 @@ final class RemoteCamera {
     @ObservationIgnored private let link: DeviceLink
     @ObservationIgnored private var timeout: Task<Void, Never>?
     @ObservationIgnored private var started = ContinuousClock.now
+    @ObservationIgnored private var waiting: [CheckedContinuation<UIImage?, Never>] = []
 
     init(link: DeviceLink) {
         self.link = link
@@ -33,6 +34,13 @@ final class RemoteCamera {
             guard !Task.isCancelled, let self, self.taking else { return }
             self.finish(error: "スタックちゃんから写真が届きませんでした。")
         }
+    }
+
+    /// Takes a photo and waits for it: nil if it could not be taken.
+    func capture() async -> UIImage? {
+        take()
+        guard taking else { return nil }
+        return await withCheckedContinuation { waiting.append($0) }
     }
 
     func handle(_ message: DeviceMessage) {
@@ -64,5 +72,8 @@ final class RemoteCamera {
         timeout = nil
         taking = false
         self.error = error
+        let result = error == nil ? photo : nil
+        for continuation in waiting { continuation.resume(returning: result) }
+        waiting.removeAll()
     }
 }

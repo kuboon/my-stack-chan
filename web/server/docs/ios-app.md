@@ -87,6 +87,12 @@ protocol SpeechSynthesizer {
   など) の出し方を指示する。Worker 側と同じプロンプトを使い、どちらが頭でも
   同じキャラクターにする。Foundation Models は文脈が短い (4K トークン程度)
   ので、会話の履歴は直近だけを渡す。
+- 「写真撮って」「右向いて」のような頼みごとは、LLM
+  のツール呼び出しで体を動かす。 できること
+  (写真を撮る、首を正面・右・左・上・下に向ける) は `StackChanBody` という
+  protocol にまとめ、各 `ChatModel` が自分のやり方でツールにする (Foundation
+  Models なら `Tool`)。ツールの結果 (撮れたかどうか) は LLM に返り、
+  「撮ったよ」のような返事につながる。撮った写真は会話の欄に出す。
 - STT は M5 から来た PCM を流し込む (マイクは M5 のものを使う)。
 - TTS の音声は PCM にして M5 へ送り、M5 のスピーカーで鳴らす。
   `AVSpeechSynthesizer` は `write(_:toBufferCallback:)` でバッファを受け取り、

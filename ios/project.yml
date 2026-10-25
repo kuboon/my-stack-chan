@@ -33,3 +33,5 @@ targets:
       properties:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        NSBonjourServices:
+          - _stackchan._tcp

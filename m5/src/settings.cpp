@@ -34,4 +34,20 @@ void setAuthKey(const uint8_t key[32]) { prefs.putBytes("auth_key", key, 32); }
 
 void clearAuthKey() { prefs.remove("auth_key"); }
 
+bool homeWifi(String& ssid, String& password) {
+    ssid = prefs.getString("wifi_ssid", "");
+    password = prefs.getString("wifi_pass", "");
+    return ssid.length() > 0;
+}
+
+void setHomeWifi(const String& ssid, const String& password) {
+    prefs.putString("wifi_ssid", ssid);
+    prefs.putString("wifi_pass", password);
+}
+
+void clearHomeWifi() {
+    prefs.remove("wifi_ssid");
+    prefs.remove("wifi_pass");
+}
+
 }  // namespace settings
