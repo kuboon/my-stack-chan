@@ -18,6 +18,8 @@
 - `m5/` — StackChan (K151) のファームウェア（PlatformIO + pioarduino、Arduino
   core 3.x、公式
   StackChan-BSP）。暗号はホストでテストできる（`m5/test/host/run.sh`）
+  - 音声の命令は KoeAct-JP（`m5/lib/koeact` は上流のコピー、モデルは
+    `m5/tools/flash_koeact.sh` でフラッシュの `model` / `a2` パーティションへ）
 - M5 と iPad のやり取りは `web/server/docs/protocol.md`
   が仕様。両方を変えるときはここを先に直す。ペアリングの暗号は
   `m5/test/vectors/vectors.json` で両側をテストする

@@ -62,7 +62,7 @@ final class Conversation {
     func handle(_ message: DeviceMessage) {
         switch message {
         case .listenStart: startListening()
-        case .listenEnd: finishListening()
+        case .listenEnd(let heard): finishListening(heard: heard)
         case .speakDone:
             if phase == .speaking {
                 phase = .idle
@@ -111,11 +111,19 @@ final class Conversation {
         phase = .listening
     }
 
-    private func finishListening() {
+    private func finishListening(heard: HeardCommand?) {
         guard phase == .listening, let transcription else { return }
         audio?.finish()
         audio = nil
         self.transcription = nil
+        if let heard, heard.accepted, !heard.names.isEmpty {
+            // The StackChan understood a command and already did it (KoeAct-JP): no reply.
+            transcription.cancel()
+            lines.append(Line(role: .user, text: heard.kana.isEmpty ? "（命令）" : heard.kana))
+            note("スタックちゃんが自分で動きました: \(heard.names.joined(separator: "、"))")
+            phase = .idle
+            return
+        }
         phase = .thinking
         link.send(.state(thinking: true))
         Task {

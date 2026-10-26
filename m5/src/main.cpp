@@ -4,9 +4,11 @@
 #include <ArduinoJson.h>
 #include <M5StackChan.h>
 
+#include "actions.h"
 #include "app_link.h"
 #include "audio.h"
 #include "camera.h"
+#include "commands.h"
 #include "config.h"
 #include "net.h"
 #include "screen.h"
@@ -20,19 +22,63 @@ uint32_t pressStarted = 0;
 uint32_t lastIdleLook = 0;
 uint32_t idleHoldUntil = 0;  // after a `look` from the app
 uint32_t restartAt = 0;      // 0: no restart due
+uint32_t listenEndDue = 0;   // 0: no listen.end waiting for the spoken-command result
+uint32_t commandSessionUntil = 0;  // without an app: the face stays up until then
+bool recording = false;            // between listen.start and the end of that recording
 
-void sendFrame(const int16_t* samples, size_t count) { app_link::sendAudio(samples, count); }
+void sendFrame(const int16_t* samples, size_t count) {
+    app_link::sendAudio(samples, count);
+    commands::push(samples, count);
+}
+
+bool commandSession() { return commandSessionUntil && int32_t(commandSessionUntil - millis()) > 0; }
 
 void speechDone() {
     screen::setMouth(0);
     app_link::sendText("{\"type\":\"speak.done\"}");
 }
 
+/// Sends listen.end, with what the StackChan made of the recording itself when it has that.
+void sendListenEnd(const commands::Result* heard) {
+    listenEndDue = 0;
+    JsonDocument doc;
+    doc["type"] = "listen.end";
+    if (heard) {
+        JsonDocument calls;
+        deserializeJson(calls, heard->actions);
+        doc["actions"] = calls;
+        doc["accepted"] = heard->accepted;
+        doc["p_act"] = heard->pAct;
+        doc["kana"] = heard->kana;
+    }
+    String json;
+    serializeJson(doc, json);
+    app_link::sendText(json);
+}
+
 void startListening() {
-    if (!app_link::connected() || audio::isSpeaking() || audio::isListening()) return;
+    // Without an app, a recording is for spoken commands only.
+    if (!app_link::connected() && !commands::ready()) return;
+    if (audio::isSpeaking() || audio::isListening() || listenEndDue) return;
     audio::startListening();
+    commands::start();
+    recording = true;
     screen::setListening(true);
     app_link::sendText("{\"type\":\"listen.start\"}");
+}
+
+/// The recording is over, stopped by a tap or the app, or by itself at kMaxListenMs.
+void recordingEnded() {
+    recording = false;
+    screen::setListening(false);
+    if (commands::busy()) {
+        // listen.end waits for the spoken-command result (about 0.5 s), so that the app knows
+        // whether the StackChan already did what was asked.
+        commands::finish();
+        listenEndDue = millis() + config::kCommandWaitMs;
+    } else {
+        sendListenEnd(nullptr);
+    }
 }
 
 void stopListening() {
@@ -40,8 +86,22 @@ void stopListening() {
     audio::stopListening();
     // Flush the frames still in the microphone before the end marker.
     audio::update(sendFrame, speechDone);
-    screen::setListening(false);
-    app_link::sendText("{\"type\":\"listen.end\"}");
+    recordingEnded();
+}
+
+/// A spoken command the StackChan is sure of runs here; the app hears about it in listen.end.
+void handleHeard(const commands::Result& heard) {
+    log_i("KoeAct: %s p_act=%.3f accepted=%d kana=%s tail=%ums", heard.actions.c_str(), heard.pAct,
+          heard.accepted, heard.kana.c_str(), unsigned(heard.tailMs));
+    if (heard.accepted) {
+        actions::run(heard.actions);
+        idleHoldUntil = millis() + config::kLookHoldMs;
+    }
+    if (!app_link::connected()) {
+        screen::setBalloon(heard.accepted ? "" : "？");
+        commandSessionUntil = millis() + config::kCommandSessionMs;
+    }
+    if (listenEndDue) sendListenEnd(&heard);
 }
 
 String joiningSsid;
@@ -108,7 +168,7 @@ void updateView() {
     View want;
     bool home = net::mode() == net::Mode::STA;
     if (app_link::pairingState() == app_link::PairingState::Waiting) want = View::Pairing;
-    else if (app_link::connected()) want = View::Face;
+    else if (app_link::connected() || commandSession()) want = View::Face;
     else if (home) want = app_link::paired() ? View::HomePaired : View::HomeUnpaired;
     else want = app_link::paired() ? View::Waiting : View::Setup;
     if (want == view) return;
@@ -189,6 +249,11 @@ void handleTouch() {
     } else if (view == View::Face) {
         if (audio::isListening()) stopListening();
         else startListening();
+    } else if (commands::ready()) {
+        // No app: a tap on the setup screens shows the face and listens for a spoken command.
+        commandSessionUntil = millis() + config::kCommandSessionMs;
+        updateView();
+        startListening();
     }
 }
 
@@ -204,7 +269,7 @@ void handleBodyTouch() {
 
 /// Now and then, look somewhere else, as a living thing would.
 void idleMotion() {
-    if (view != View::Face || audio::isSpeaking() || audio::isListening()) return;
+    if (view != View::Face || audio::isSpeaking() || audio::isListening() || actions::moving()) return;
     if (millis() - lastIdleLook < 8000 || int32_t(idleHoldUntil - millis()) > 0) return;
     lastIdleLook = millis();
     M5StackChan.Motion.move(random(-300, 301), random(100, 401), 150);
@@ -219,6 +284,8 @@ void setup() {
     audio::begin();
     net::begin(screen::showJoining);
     app_link::begin();
+    // After Wi-Fi: ESP-DL takes internal RAM first while loading, and Wi-Fi needs its share.
+    commands::begin();
 }
 
 void loop() {
@@ -244,6 +311,17 @@ void loop() {
 
     audio::update(sendFrame, speechDone);
     if (audio::isSpeaking()) screen::setMouth(audio::speechLevel());
+
+    if (recording && !audio::isListening()) recordingEnded();
+    commands::Result heard;
+    if (commands::poll(heard)) handleHeard(heard);
+    if (listenEndDue && int32_t(millis() - listenEndDue) >= 0) sendListenEnd(nullptr);
+    // Without an app, the face stays while something is going on.
+    if (commandSessionUntil && (audio::isListening() || commands::busy() || actions::moving()))
+        commandSessionUntil = max(commandSessionUntil, uint32_t(millis() + 2000));
+    if (commandSessionUntil && !commandSession()) commandSessionUntil = 0;
+
+    actions::update();
     idleMotion();
     delay(1);
 }
