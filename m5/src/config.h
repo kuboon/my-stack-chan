@@ -27,6 +27,10 @@ constexpr uint32_t kWifiTryTimeoutMs = 15000;
 constexpr uint32_t kWifiRestartDelayMs = 3000;
 /// How long the head stays where `look` put it before the idle motion moves it again.
 constexpr uint32_t kLookHoldMs = 30000;
+/// The longest the end of a recording waits for the spoken-command result (normally ~0.5 s).
+constexpr uint32_t kCommandWaitMs = 3000;
+/// Without an app, how long the face stays up after a spoken command.
+constexpr uint32_t kCommandSessionMs = 10000;
 /// Frames the camera drops while its exposure settles, before the one it keeps.
 constexpr int kCameraWarmupFrames = 6;
 /// frame2jpg()'s quality, 1 to 100.

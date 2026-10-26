@@ -1,0 +1,8 @@
+{
+  "name": "koeact",
+  "version": "0.1.1",
+  "description": "KoeAct-JP decoder (a2) and Ralomi log-Mel front-end, copied from ayousanz/KoeAct-JP",
+  "license": "Apache-2.0",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}

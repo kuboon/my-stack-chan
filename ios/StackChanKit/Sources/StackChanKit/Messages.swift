@@ -1,11 +1,47 @@
 import Foundation
 
+/// What the StackChan heard in a recording with its own spoken-command model (KoeAct-JP), sent
+/// with `listen.end`. When `accepted`, the StackChan has already done `actions`, and the app does
+/// not answer the recording.
+public struct HeardCommand: Equatable, Sendable {
+    /// The Action JSON: "[]" or an array of calls such as `{"name":"nod","arguments":{"count":2}}`.
+    public var actions: String
+    /// The names of the calls, in order.
+    public var names: [String]
+    public var accepted: Bool
+    public var pAct: Double
+    /// Ralomi's kana reading of the recording. Rough: no kanji.
+    public var kana: String
+
+    public init(actions: String, names: [String], accepted: Bool, pAct: Double, kana: String) {
+        self.actions = actions
+        self.names = names
+        self.accepted = accepted
+        self.pAct = pAct
+        self.kana = kana
+    }
+
+    init?(listenEnd object: [String: Any]) {
+        guard let calls = object["actions"] as? [[String: Any]] else { return nil }
+        let data = (try? JSONSerialization.data(withJSONObject: calls, options: [.sortedKeys])) ?? Data("[]".utf8)
+        self.init(
+            actions: String(decoding: data, as: UTF8.self),
+            names: calls.compactMap { $0["name"] as? String },
+            accepted: object["accepted"] as? Bool ?? false,
+            pAct: object["p_act"] as? Double ?? 0,
+            kana: object["kana"] as? String ?? ""
+        )
+    }
+}
+
 /// A text message from the device (web/server/docs/protocol.md).
 public enum DeviceMessage: Equatable, Sendable {
     case hello(nonce: Data)
     case ready(name: String)
     case listenStart
-    case listenEnd
+    /// The recording is over. `heard` is what the StackChan made of it itself (KoeAct-JP), when
+    /// it has the model.
+    case listenEnd(heard: HeardCommand?)
     case speakDone
     case touch(gesture: String)
     /// A photo the camera took for `photo.take`, as JPEG, with where the time went.
@@ -30,7 +66,7 @@ public enum DeviceMessage: Equatable, Sendable {
             self = .hello(nonce: nonce)
         case "ready": self = .ready(name: object["name"] as? String ?? "")
         case "listen.start": self = .listenStart
-        case "listen.end": self = .listenEnd
+        case "listen.end": self = .listenEnd(heard: HeardCommand(listenEnd: object))
         case "speak.done": self = .speakDone
         case "touch": self = .touch(gesture: object["gesture"] as? String ?? "tap")
         case "photo":
