@@ -8,7 +8,7 @@ import Testing
 }
 
 @Test func parsesDeviceEvents() {
-    #expect(DeviceMessage(json: #"{"type":"listen.end"}"#) == .listenEnd)
+    #expect(DeviceMessage(json: #"{"type":"listen.end"}"#) == .listenEnd(heard: nil))
     #expect(DeviceMessage(json: #"{"type":"touch","gesture":"swipe_forward"}"#) == .touch(gesture: "swipe_forward"))
     #expect(DeviceMessage(json: "not json") == nil)
 }
@@ -61,4 +61,17 @@ import Testing
 @Test func pcmRoundTrips() {
     let samples: [Int16] = [0, 1, -1, .max, .min]
     #expect(PCM.samples(from: PCM.data(from: samples)) == samples)
+}
+
+@Test func parsesHeardCommand() {
+    let json = #"{"type":"listen.end","actions":[{"name":"nod","arguments":{"count":2}}],"accepted":true,"p_act":0.995,"kana":"うなずいて"}"#
+    guard case .listenEnd(let heard?) = DeviceMessage(json: json) else {
+        Issue.record("no heard command")
+        return
+    }
+    #expect(heard.accepted)
+    #expect(heard.names == ["nod"])
+    #expect(heard.kana == "うなずいて")
+    #expect(heard.actions == #"[{"arguments":{"count":2},"name":"nod"}]"#)
+    #expect(abs(heard.pAct - 0.995) < 1e-9)
 }

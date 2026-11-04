@@ -6,3 +6,6 @@ out=$(mktemp -d)
 c++ -std=c++17 -Wall -Wextra -I"$here/../../src" "$here/test_pairing.cpp" "$here/../../src/pairing_crypto.cpp" \
   -lmbedcrypto -o "$out/test_pairing"
 "$out/test_pairing" "$here/../vectors/vectors.json"
+c++ -std=c++17 -Wall -Wextra -I"$here/../../src" "$here/test_actions.cpp" "$here/../../src/action_pieces.cpp" \
+  -o "$out/test_actions"
+"$out/test_actions"

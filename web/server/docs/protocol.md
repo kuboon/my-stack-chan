@@ -117,13 +117,13 @@ M5 → { "type": "ready", "name": "stackchan-1A2B" }   失敗なら閉じる
 
 M5 → アプリ
 
-| `type`         | 内容                                                                     |
-| -------------- | ------------------------------------------------------------------------ |
-| `listen.start` | 録音を始めた。この後にマイクの音が続く                                   |
-| `listen.end`   | 録音を終えた。アプリは認識を確定させ、返事を作る                         |
-| `speak.done`   | 受け取った音声を鳴らし終えた                                             |
-| `touch`        | 胴体のタッチ (`"gesture": "tap" \| "swipe_forward" \| "swipe_backward"`) |
-| `photo`        | `photo.take` に答えて撮った写真 (「写真」を見る)                         |
+| `type`         | 内容                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `listen.start` | 録音を始めた。この後にマイクの音が続く                                                |
+| `listen.end`   | 録音を終えた。アプリは認識を確定させ、返事を作る (「スタックちゃんで聞き取った命令」) |
+| `speak.done`   | 受け取った音声を鳴らし終えた                                                          |
+| `touch`        | 胴体のタッチ (`"gesture": "tap" \| "swipe_forward" \| "swipe_backward"`)              |
+| `photo`        | `photo.take` に答えて撮った写真 (「写真」を見る)                                      |
 
 アプリ → M5
 
@@ -147,6 +147,36 @@ M5 → アプリ
   `listen.end` を送って止める。6 秒たっても声がなければ、そこで止める。
 - しゃべっている間 (`speak.start` から `speak.done` まで) は録音しない (CoreS3
   はマイクとスピーカーを同時に使えない)。
+
+### スタックちゃんで聞き取った命令
+
+M5 に KoeAct-JP のモデルが書き込まれていれば (`m5/tools/flash_koeact.sh`)、M5
+は録音を自分でも聞き、「右を向いて」「うなずいて」のような決まった命令かどうかを
+判断する ([M5 ファームウェア](./m5-firmware#音声の命令-))。そのとき `listen.end`
+は結果を待って (話し終わりから 0.5 秒ほど、長くても 3 秒) 送り、次を付ける。
+
+```json
+{
+  "type": "listen.end",
+  "actions": [
+    { "name": "look", "arguments": { "direction": "right", "degrees": 45 } }
+  ],
+  "accepted": true,
+  "p_act": 0.996,
+  "kana": "みぎをむいて"
+}
+```
+
+- `actions`: KoeAct-JP の Action スキーマ v1 の呼び出し (最大 2
+  つ)。命令でなければ `[]`。
+- `accepted`: `p_act` が閾値 (0.97) 以上で、`actions` が空でない。**true のとき
+  M5 はもう `actions` を実行している**。アプリはこの録音に返事をしない。
+- `p_act`: 命令である確率。
+- `kana`: 同じモデルの文字起こし (ひらがな、漢字なし)。粗いので参考。
+- モデルの無い M5 は、これまで通り `type` だけの `listen.end` を送る。
+
+アプリがつながっていないときも、M5 の画面をタップすると顔を出して命令だけを聞く
+(アプリへは何も送らない)。
 
 ### 写真
 
@@ -241,8 +271,9 @@ M5 → アプリ
 ### 会話の流れ
 
 ```
-M5: listen.start → PCM … → listen.end
-アプリ: state(thinking) → STT → LLM → 文ごとに TTS
+M5: listen.start → PCM … → listen.end (+ 聞き取った命令)
+M5: accepted なら命令を実行して終わり
+アプリ: そうでなければ state(thinking) → STT → LLM → 文ごとに TTS
 アプリ: face(happy)? → speak.start(text) → PCM … → speak.end
 M5: 鳴らし終えたら speak.done
 アプリ: state(idle)

@@ -1,0 +1,12 @@
+# 16MB flash (StackChan K151 / CoreS3).
+# nvs stays where default_16MB.csv had it, so the pairing and the home Wi-Fi survive the switch.
+# model / a2: KoeAct-JP (spoken commands), written by tools/flash_koeact.sh. ESP-DL wants the
+# model partition 64KB aligned.
+# Name,    Type, SubType,  Offset,   Size
+nvs,       data, nvs,      0x9000,   0x5000,
+otadata,   data, ota,      0xe000,   0x2000,
+app0,      app,  ota_0,    0x10000,  0x400000,
+model,     data, spiffs,   0x410000, 0x600000,
+a2,        data, spiffs,   0xa10000, 0x180000,
+spiffs,    data, spiffs,   0xb90000, 0x460000,
+coredump,  data, coredump, 0xff0000, 0x10000,
