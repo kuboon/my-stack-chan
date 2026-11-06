@@ -35,5 +35,8 @@ jobs:
             ~/.platformio
             m5/.pio/libdeps
           key: pio-${{ hashFiles('m5/platformio.ini') }}
-      - run: pip install platformio
+      - run: pip install platformio==6.2.0
       - run: pio run
+        env:
+          # See m5/constraints.txt.
+          UV_CONSTRAINT: ${{ github.workspace }}/m5/constraints.txt

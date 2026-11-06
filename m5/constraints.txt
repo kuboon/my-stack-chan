@@ -1,0 +1,5 @@
+# Versions for the Python environment pioarduino builds in ~/.platformio/penv (read through
+# UV_CONSTRAINT). pioarduino 6.2.0.post1 reads as "6.2.0-post.1", which the platform's own
+# "PlatformIO Core >= 6.2.0" check takes for a pre-release of 6.2.0 and refuses
+# (IncompatiblePlatform), so the rebuild of the Arduino libs stops halfway.
+pioarduino==6.2.0
