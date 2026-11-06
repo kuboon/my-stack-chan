@@ -18,11 +18,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 cache="${KOEACT_CACHE:-$here/../.pio/koeact/$REVISION}"
 mkdir -p "$cache"
 
+# sha256sum on macOS has no --status and does not read a check list from stdin, so compare by hand.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 fetch() { # name sha256
-  if [ ! -f "$cache/$1" ] || ! echo "$2  $cache/$1" | sha256sum -c --status 2>/dev/null; then
+  if [ ! -f "$cache/$1" ] || [ "$(sha256 "$cache/$1")" != "$2" ]; then
     echo "downloading $1"
     curl -fL --progress-bar -o "$cache/$1.part" "$BASE/$1"
-    echo "$2  $cache/$1.part" | sha256sum -c --status || { echo "SHA-256 mismatch: $1" >&2; exit 1; }
+    [ "$(sha256 "$cache/$1.part")" = "$2" ] || { echo "SHA-256 mismatch: $1" >&2; exit 1; }
     mv "$cache/$1.part" "$cache/$1"
   fi
 }

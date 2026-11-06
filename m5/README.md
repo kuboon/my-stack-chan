@@ -32,6 +32,13 @@ pio device monitor   # シリアルログ
 PlatformIO Core 6.2.0 以上 (`pio upgrade`) と pioarduino (Arduino core 3.x)
 を使う。ライブラリは GitHub の タグで固定している (`platformio.ini`)。
 
+KoeAct-JP を速く動かすため、ESP-DL を 3.3.13 に、キャッシュを 64KB
+にして Arduino のライブラリをビルドし直す (`platformio.ini` の
+`custom_component_add` / `custom_sdkconfig`)。最初のビルドは数分かかり、
+`~/.platformio/packages/framework-arduinoespressif32-libs`
+を書き換える。Arduino 同梱の ESP-DL 3.3.11 では、0.4 秒の区切りに 1.4 秒かかって
+録音に追いつかない (3.3.13 では 0.26 秒)。
+
 ## 音声の命令 (KoeAct-JP) のモデルを書き込む
 
 パーティション表 (`partitions.csv`) に `model` と `a2`

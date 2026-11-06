@@ -28,7 +28,10 @@ namespace {
 
 constexpr int kBins = 40;
 constexpr int kSubsampling = 4;
-constexpr int kMaxFrames = 1500;                    // 15 s
+// 6 s: commands are short, and with the model (4.4MB) loaded, PSRAM has room for neither a
+// 15 s arena (1MB) nor the camera frame (600KB) next to it. Recording goes on for up to 15 s;
+// only the first 6 s reach the recognizer.
+constexpr int kMaxFrames = 600;
 constexpr int kMaxSteps = kMaxFrames / kSubsampling;  // a2's capacity
 /// KoeAct-JP's config.json: below this p_act the answer is "[]".
 constexpr float kThreshold = 0.97f;
@@ -170,6 +173,8 @@ void recognize(uint32_t mySession) {
             const int count = std::min(chunkFrames, computed - fed);
             feed(features + fed * kBins, count, steps, argmax);
             fed += count;
+            // The model keeps CPU 0 busy; let IDLE0 run so the task watchdog is fed.
+            vTaskDelay(1);
         }
         if (last) break;
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
