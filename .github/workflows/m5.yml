@@ -40,3 +40,9 @@ jobs:
         env:
           # See m5/constraints.txt.
           UV_CONSTRAINT: ${{ github.workspace }}/m5/constraints.txt
+      # The image to update a StackChan over Wi-Fi with (the app's "ファームウェアの更新").
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: m5/.pio/build/stackchan/firmware.bin
+          if-no-files-found: error

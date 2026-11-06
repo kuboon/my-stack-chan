@@ -75,3 +75,19 @@ import Testing
     #expect(heard.actions == #"[{"arguments":{"count":2},"name":"nod"}]"#)
     #expect(abs(heard.pAct - 0.995) < 1e-9)
 }
+
+@Test func otaMessages() {
+    #expect(AppMessage.otaBegin(size: 3, sha256: "ab").json == #"{"sha256":"ab","size":3,"type":"ota.begin"}"#)
+    #expect(DeviceMessage(json: #"{"type":"ota.ready","token":"t1"}"#) == .otaReady(token: "t1"))
+    #expect(DeviceMessage(json: #"{"type":"ota.result","ok":true}"#) == .otaResult(ok: true, error: nil))
+    #expect(DeviceMessage(json: #"{"type":"ota.result","ok":false,"error":"sha256"}"#) == .otaResult(ok: false, error: "sha256"))
+}
+
+@Test func infoWithOta() throws {
+    let json = #"{"name":"stackchan-1A2B","model":"K151","firmware":"0.2.0","paired":true,"wifi":"ap","built":"Nov  6 2026 10:00:00","ota_max_size":3932160}"#
+    let info = try JSONDecoder().decode(DeviceInfo.self, from: Data(json.utf8))
+    #expect(info.otaMaxSize == 3_932_160)
+    #expect(info.built == "Nov  6 2026 10:00:00")
+    let old = try JSONDecoder().decode(DeviceInfo.self, from: Data(#"{"name":"a","model":"K151","firmware":"0.1.0","paired":false}"#.utf8))
+    #expect(old.otaMaxSize == nil)
+}

@@ -25,6 +25,7 @@ enum class CommandType {
     WifiScan,
     WifiConnect,   // text: the SSID, secret: the password (opened already)
     WifiForget,
+    OtaDone,       // text: empty when the new firmware is ready to boot, else why it is not
 };
 
 struct Command {

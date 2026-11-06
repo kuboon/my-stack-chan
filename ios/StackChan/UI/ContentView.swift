@@ -5,8 +5,10 @@ struct ContentView: View {
     var conversation: Conversation
     var camera: RemoteCamera
     var wifi: WifiSetup
+    var firmware: FirmwareUpdate
     @State private var showingCamera = false
     @State private var showingWifi = false
+    @State private var showingFirmware = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +30,8 @@ struct ContentView: View {
                 Menu {
                     Button("スタックちゃんの Wi-Fi…") { showingWifi = true }
                         .disabled(!link.isConnected)
+                    Button("ファームウェアの更新…") { showingFirmware = true }
+                        .disabled(!link.isConnected)
                     Button("会話を消す", action: conversation.clear)
                     Button("この iPad のペアリングを消す", role: .destructive, action: link.forgetPairing)
                 } label: {
@@ -39,6 +43,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingWifi) {
                 WifiView(link: link, setup: wifi)
+            }
+            .sheet(isPresented: $showingFirmware) {
+                FirmwareView(link: link, update: firmware)
             }
         }
     }

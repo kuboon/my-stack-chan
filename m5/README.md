@@ -62,8 +62,24 @@ m5/tools/flash_koeact.sh            # ポートを指定するなら m5/tools/fl
 書き込んでいなければ、音声の命令は自動で無効になり、ほかはこれまで通り動く。
 シリアルログに `KoeAct: ready` が出れば有効。
 
-**`default_16MB.csv` から `partitions.csv`
-に変えたので、前のファームウェアから上げるときは アプリ領域の配置が変わる。**
+## Wi-Fi で更新する (OTA)
+
+ファームウェアの置き場所が 2 つあるパーティション表 (`partitions.csv`)
+になってからは、 USB なしで更新できる。iPad
+アプリの「…」→「ファームウェアの更新…」で `firmware.bin` を選ぶ。`firmware.bin`
+は GitHub Actions の m5 ワークフローの成果物 `firmware`、 または手元の `pio run`
+が作る `.pio/build/stackchan/firmware.bin`。
+
+新しい版が 30 秒動けばそれに決まり、それより前に止まれば前の版に戻る。
+
+**パーティション表を変えたときは、1 回だけ USB で書き込み、モデルも書き直す**
+(`model` / `a2` の位置が変わるため):
+
+```sh
+pio run -t upload
+m5/tools/flash_koeact.sh
+```
+
 NVS (ペアリングと家の Wi-Fi) は同じ場所なので消えない。
 
 ## テスト
