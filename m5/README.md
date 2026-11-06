@@ -32,6 +32,22 @@ pio device monitor   # シリアルログ
 PlatformIO Core 6.2.0 以上 (`pio upgrade`) と pioarduino (Arduino core 3.x)
 を使う。ライブラリは GitHub の タグで固定している (`platformio.ini`)。
 
+KoeAct-JP を速く動かすため、ESP-DL を 3.3.13 に、キャッシュを 64KB にして
+Arduino のライブラリをビルドし直す (`platformio.ini` の `custom_component_add` /
+`custom_sdkconfig`)。最初のビルドは数分かかり、
+`~/.platformio/packages/framework-arduinoespressif32-libs` を書き換える。Arduino
+同梱の ESP-DL 3.3.11 では、0.4 秒の区切りに 1.4 秒かかって 録音に追いつかない
+(3.3.13 では 0.26 秒)。
+
+最初のビルドで `IncompatiblePlatform: ... PlatformIO Core v6.2.0-post.1`
+と出て止まるときは、 pioarduino の Python 環境に 6.2.0.post1 が入っている
+(上流の不具合)。`constraints.txt` で 6.2.0 に固定してビルドし直す:
+
+```sh
+rm -rf ~/.platformio/penv
+UV_CONSTRAINT=$PWD/constraints.txt pio run
+```
+
 ## 音声の命令 (KoeAct-JP) のモデルを書き込む
 
 パーティション表 (`partitions.csv`) に `model` と `a2`

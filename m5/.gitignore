@@ -1,1 +1,6 @@
 .pio/
+# pioarduino の Arduino ライブラリの再ビルドが作るもの
+managed_components/
+.dummy/
+sdkconfig.defaults
+sdkconfig.*
