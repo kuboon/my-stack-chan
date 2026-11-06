@@ -53,6 +53,10 @@ public enum DeviceMessage: Equatable, Sendable {
     /// The answer to `wifi.connect`: the address on success, or the error.
     case wifiJoined(ssid: String, ip: String)
     case wifiFailed(error: String)
+    /// The answer to `ota.begin`: POST the image to `/ota?token=…`.
+    case otaReady(token: String)
+    /// How a firmware update went. On success the StackChan restarts onto it.
+    case otaResult(ok: Bool, error: String?)
     case unknown(type: String)
 
     public init?(json: String) {
@@ -65,6 +69,8 @@ public enum DeviceMessage: Equatable, Sendable {
             guard let nonce = (object["nonce"] as? String).flatMap({ Data(base64Encoded: $0) }) else { return nil }
             self = .hello(nonce: nonce)
         case "ready": self = .ready(name: object["name"] as? String ?? "")
+        case "ota.ready": self = .otaReady(token: object["token"] as? String ?? "")
+        case "ota.result": self = .otaResult(ok: object["ok"] as? Bool ?? false, error: object["error"] as? String)
         case "listen.start": self = .listenStart
         case "listen.end": self = .listenEnd(heard: HeardCommand(listenEnd: object))
         case "speak.done": self = .speakDone
@@ -194,6 +200,8 @@ public enum AppMessage: Equatable, Sendable {
     /// `password` is sealed (PairingCrypto.sealWifiPassword).
     case wifiConnect(ssid: String, nonce: Data, password: Data)
     case wifiForget
+    /// Announces a firmware image: its size and SHA-256 (lowercase hex). Answered by `ota.ready`.
+    case otaBegin(size: Int, sha256: String)
 
     public var json: String {
         let object: [String: Any] = switch self {
@@ -211,6 +219,7 @@ public enum AppMessage: Equatable, Sendable {
             ["type": "wifi.connect", "ssid": ssid, "nonce": nonce.base64EncodedString(),
              "password": password.base64EncodedString()]
         case .wifiForget: ["type": "wifi.forget"]
+        case .otaBegin(let size, let sha256): ["type": "ota.begin", "size": size, "sha256": sha256]
         }
         let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
@@ -225,4 +234,13 @@ public struct DeviceInfo: Codable, Equatable, Sendable {
     public var paired: Bool
     /// "ap" or "sta". Missing from older firmware, which is always "ap".
     public var wifi: String?
+    /// When the firmware was built (the compiler's date and time). Missing from older firmware.
+    public var built: String?
+    /// The largest firmware image an update over Wi-Fi takes. Missing from firmware without OTA.
+    public var otaMaxSize: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case name, model, firmware, paired, wifi, built
+        case otaMaxSize = "ota_max_size"
+    }
 }

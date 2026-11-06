@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "config.h"
 #include "net.h"
+#include "ota.h"
 #include "pairing_crypto.h"
 #include "settings.h"
 
@@ -106,6 +107,8 @@ void handleInfo(AsyncWebServerRequest* req) {
     doc["wifi"] = net::mode() == net::Mode::STA ? "sta" : "ap";
     doc["model"] = STACKCHAN_MODEL;
     doc["firmware"] = STACKCHAN_FIRMWARE_VERSION;
+    doc["built"] = __DATE__ " " __TIME__;
+    doc["ota_max_size"] = ota::maxSize();
     {
         Guard g;
         doc["paired"] = hasKey;
@@ -225,6 +228,21 @@ void handleText(AsyncWebSocketClient* client, const String& text) {
     else if (!strcmp(type, "wifi.scan")) push(CommandType::WifiScan);
     else if (!strcmp(type, "wifi.connect")) handleWifiConnect(client, doc);
     else if (!strcmp(type, "wifi.forget")) push(CommandType::WifiForget);
+    else if (!strcmp(type, "ota.begin")) {
+        ota::Ticket t = ota::prepare(doc["size"] | size_t(0), doc["sha256"] | "");
+        JsonDocument reply;
+        if (t.ok) {
+            reply["type"] = "ota.ready";
+            reply["token"] = t.token;
+        } else {
+            reply["type"] = "ota.result";
+            reply["ok"] = false;
+            reply["error"] = t.error;
+        }
+        String s;
+        serializeJson(reply, s);
+        client->text(s);
+    }
 }
 
 void onEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, void* arg, uint8_t* data,
@@ -294,6 +312,34 @@ void onEvent(AsyncWebSocket*, AsyncWebSocketClient* client, AwsEventType type, v
     }
 }
 
+// --- OTA: POST /ota?token=… (see ota.h) ----------------------------------------
+
+// Whether a request carries the upload is kept on the request itself (_tempObject, which the
+// request frees), so a second POST cannot cut into the one in progress.
+bool ownsUpload(AsyncWebServerRequest* req) { return req->_tempObject != nullptr; }
+
+void handleOtaBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+    if (index == 0 && ota::accepts(req->arg("token")) && ota::write(data, len, index, total)) {
+        req->_tempObject = malloc(1);
+        return;
+    }
+    if (index > 0 && ownsUpload(req)) ota::write(data, len, index, total);
+}
+
+void handleOtaDone(AsyncWebServerRequest* req) {
+    if (!ownsUpload(req)) {
+        // No valid token, a size other than announced, or an empty body: nothing was written.
+        req->send(403);
+        return;
+    }
+    String error = ota::finish();
+    JsonDocument doc;
+    doc["ok"] = error.isEmpty();
+    if (error.length()) doc["error"] = error;
+    sendJson(req, error.isEmpty() ? 200 : 400, doc);
+    push(CommandType::OtaDone, error.c_str());
+}
+
 }  // namespace
 
 void begin() {
@@ -307,6 +353,7 @@ void begin() {
     server.on("/pair/status", HTTP_GET, handlePairStatus);
     server.on(
         "/pair/start", HTTP_POST, [](AsyncWebServerRequest*) {}, nullptr, handlePairStart);
+    server.on("/ota", HTTP_POST, handleOtaDone, nullptr, handleOtaBody);
     server.onNotFound([](AsyncWebServerRequest* req) { req->send(404); });
     server.begin();
 }

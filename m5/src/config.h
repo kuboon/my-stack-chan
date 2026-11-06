@@ -1,6 +1,6 @@
 #pragma once
 
-#define STACKCHAN_FIRMWARE_VERSION "0.1.0"
+#define STACKCHAN_FIRMWARE_VERSION "0.2.0"
 #define STACKCHAN_MODEL "K151"
 
 namespace config {
@@ -29,6 +29,12 @@ constexpr uint32_t kWifiRestartDelayMs = 3000;
 constexpr uint32_t kLookHoldMs = 30000;
 /// The longest the end of a recording waits for the spoken-command result (normally ~0.5 s).
 constexpr uint32_t kCommandWaitMs = 3000;
+/// How long an ota.begin token can wait for its upload.
+constexpr uint32_t kOtaTokenTtlMs = 120000;
+/// A newly updated firmware is kept once it has run this long; a reset before boots the old one.
+constexpr uint32_t kOtaProbationMs = 30000;
+/// After a successful update, how long until the restart (so ota.result reaches the app).
+constexpr uint32_t kOtaRestartDelayMs = 1500;
 /// Without an app, how long the face stays up after a spoken command.
 constexpr uint32_t kCommandSessionMs = 10000;
 /// Frames the camera drops while its exposure settles, before the one it keeps.

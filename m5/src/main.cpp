@@ -11,6 +11,7 @@
 #include "commands.h"
 #include "config.h"
 #include "net.h"
+#include "ota.h"
 #include "screen.h"
 #include "settings.h"
 
@@ -222,6 +223,20 @@ void handleCommand(const app_link::Command& c) {
             net::startJoin(joiningSsid, joiningPassword);
             screen::setBalloon("つないでみるね");
             break;
+        case CommandType::OtaDone: {
+            JsonDocument doc;
+            doc["type"] = "ota.result";
+            doc["ok"] = c.text[0] == '\0';
+            if (c.text[0]) doc["error"] = c.text;
+            String json;
+            serializeJson(doc, json);
+            app_link::sendText(json);
+            if (!c.text[0]) {
+                screen::setBalloon("あたらしくなるよ");
+                restartAt = millis() + config::kOtaRestartDelayMs;
+            }
+            break;
+        }
         case CommandType::WifiForget:
             settings::clearHomeWifi();
             restartAt = millis() + config::kWifiRestartDelayMs;
@@ -299,6 +314,7 @@ void loop() {
     }
 
     net::update();
+    ota::update();
     String networks;
     if (net::scanResult(networks)) app_link::sendText(networks);
     net::JoinResult joined = net::takeJoinResult();

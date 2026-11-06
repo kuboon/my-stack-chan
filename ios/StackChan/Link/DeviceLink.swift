@@ -42,6 +42,8 @@ final class DeviceLink {
     /// Where the StackChan was found, and on which Wi-Fi it is: "ap" or "sta".
     private(set) var activeHost = ""
     private(set) var deviceWifi: String?
+    /// The connected StackChan's `/info`.
+    private(set) var deviceInfo: DeviceInfo?
 
     @ObservationIgnored var onMessage: (@MainActor (DeviceMessage) -> Void)?
     @ObservationIgnored var onAudio: (@MainActor (Data) -> Void)?
@@ -65,6 +67,7 @@ final class DeviceLink {
         do {
             let info = try await locate()
             deviceWifi = info.wifi ?? "ap"
+            deviceInfo = info
             var key = KeyStore.key(for: info.name)
             if key != nil, !info.paired {
                 // The StackChan forgot the pairing; so do we.
@@ -110,6 +113,24 @@ final class DeviceLink {
     func sendAudio(_ pcm: Data) {
         guard !pcm.isEmpty else { return }
         outbox?.yield(.data(pcm))
+    }
+
+    /// POSTs a firmware image for the token `ota.ready` gave (web/server/docs/protocol.md,
+    /// "ファームウェアの更新"). Returns the HTTP status; the outcome also comes as `ota.result`.
+    func uploadFirmware(_ image: Data, token: String) async throws -> Int {
+        var request = URLRequest(url: url("/ota?token=\(token)"))
+        request.httpMethod = "POST"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 300
+        let (_, response) = try await session.upload(for: request, from: image)
+        return (response as? HTTPURLResponse)?.statusCode ?? 0
+    }
+
+    /// Reads `/info` again, from where the StackChan was last found.
+    func refreshInfo() async -> DeviceInfo? {
+        guard !activeHost.isEmpty, let info = try? await fetchInfo(host: activeHost) else { return nil }
+        deviceInfo = info
+        return info
     }
 
     // MARK: - HTTP
