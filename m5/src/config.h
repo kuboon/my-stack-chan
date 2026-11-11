@@ -9,6 +9,8 @@ namespace config {
 constexpr uint32_t kSampleRate = 16000;
 /// Samples per microphone frame sent to the app: 50 ms.
 constexpr size_t kMicFrameSamples = 800;
+/// A hand that stays on the head this long is listened to, until the hand goes (not a tap).
+constexpr uint32_t kHeadHoldMs = 400;
 /// Longest a recording runs before it stops by itself.
 constexpr uint32_t kMaxListenMs = 15000;
 /// Seconds of speech the playback buffer holds (PSRAM).

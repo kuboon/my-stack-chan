@@ -27,6 +27,9 @@ uint32_t restartAt = 0;      // 0: no restart due
 uint32_t listenEndDue = 0;   // 0: no listen.end waiting for the spoken-command result
 uint32_t commandSessionUntil = 0;  // without an app: the face stays up until then
 bool recording = false;            // between listen.start and the end of that recording
+uint32_t headPressStarted = 0;     // when a hand was put on the head (0: not waiting for a hold)
+bool headSwiped = false;           // the touch turned out to be a swipe, not a resting hand
+bool headTalking = false;          // the recording was started by a hand on the head
 
 void sendFrame(const int16_t* samples, size_t count) {
     app_link::sendAudio(samples, count);
@@ -246,6 +249,8 @@ void handleCommand(const app_link::Command& c) {
     }
 }
 
+void listenFromTouch();
+
 void handleTouch() {
     auto t = M5.Touch.getDetail();
     if (t.wasPressed()) pressStarted = millis();
@@ -262,15 +267,23 @@ void handleTouch() {
             case screen::Button::Cancel: app_link::rejectPairing(); break;
             default: break;
         }
-    } else if (view == View::Face) {
-        if (audio::isListening()) stopListening();
-        else startListening();
-    } else if (commands::ready()) {
-        // No app: a tap on the setup screens shows the face and listens for a spoken command.
+    } else if (view == View::Face && audio::isListening()) {
+        stopListening();
+    } else {
+        listenFromTouch();
+    }
+}
+
+/// A touch asks to be heard. On the face, it listens; without an app, on the setup screens, it
+/// shows the face and listens for a spoken command.
+void listenFromTouch() {
+    if (view == View::Pairing) return;
+    if (view != View::Face) {
+        if (!commands::ready()) return;
         commandSessionUntil = millis() + config::kCommandSessionMs;
         updateView();
-        startListening();
     }
+    startListening();
 }
 
 void handleBodyTouch() {
@@ -278,9 +291,34 @@ void handleBodyTouch() {
     const char* gesture = nullptr;
     if (ts.wasSwipedForward()) gesture = "swipe_forward";
     else if (ts.wasSwipedBackward()) gesture = "swipe_backward";
-    else if (ts.wasClicked()) gesture = "tap";
+    // A hand that rested on the head to talk is not a tap, even if the library calls it a click.
+    else if (ts.wasClicked() && !headTalking) gesture = "tap";
     if (!gesture || !app_link::connected()) return;
     app_link::sendText(String("{\"type\":\"touch\",\"gesture\":\"") + gesture + "\"}");
+}
+
+/// A hand resting on the head: it listens while the hand stays, and ends the recording when the
+/// hand goes. A short touch is still a tap, and a stroke a swipe (handleBodyTouch).
+void handleHeadHold() {
+    auto& ts = M5StackChan.TouchSensor;
+    if (ts.wasPressed()) {
+        headPressStarted = millis();
+        headSwiped = false;
+    }
+    if (ts.wasSwiped()) headSwiped = true;
+    if (ts.isPressed() && headPressStarted && !headSwiped &&
+        millis() - headPressStarted >= config::kHeadHoldMs) {
+        headPressStarted = 0;  // once per touch
+        listenFromTouch();
+        headTalking = audio::isListening();
+    }
+    if (ts.wasReleased()) {
+        headPressStarted = 0;
+        if (headTalking) {
+            headTalking = false;
+            if (audio::isListening()) stopListening();
+        }
+    }
 }
 
 /// Now and then, look somewhere else, as a living thing would.
@@ -339,6 +377,7 @@ void loop() {
     updateView();
     handleTouch();
     handleBodyTouch();
+    handleHeadHold();
 
     audio::update(sendFrame, speechDone);
     if (audio::isSpeaking()) screen::setMouth(audio::speechLevel());
