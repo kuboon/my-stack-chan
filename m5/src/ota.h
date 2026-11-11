@@ -5,6 +5,9 @@
 // goes into the OTA slot the StackChan is not running from, and only an image whose size and
 // SHA-256 match the announcement, and that the bootloader accepts, becomes the next boot.
 //
+// A signed update (ECDSA, with a public key built into the firmware) can come without the app's
+// key: POST /ota/signed?sig=… instead of ota.begin. See ota_signature.h.
+//
 // A new image boots on probation (the bootloader's rollback): it is kept once it has run for
 // kOtaProbationMs, and a reset before that boots the previous one again.
 #pragma once
@@ -22,6 +25,15 @@ struct Ticket {
 
 /// A new update of `size` bytes whose SHA-256 is `sha256Hex`. Safe from any task.
 Ticket prepare(size_t size, const char* sha256Hex);
+
+/// Whether signed updates are on (a public key is built in: ota_pubkey.h).
+bool signedEnabled();
+
+/// A signed update (POST /ota/signed) of `total` bytes, with `signatureHex` (DER, in hex). False
+/// when signed updates are off, the image does not fit, the signature is not hex, or another
+/// update is on. After it, the same upload goes through write() and finish(); finish() checks the
+/// signature once the whole image is in, and refuses the image ("signature") if it does not match.
+bool beginSigned(const String& signatureHex, size_t total);
 
 /// Whether `token` is the one prepare() handed out, still unused and not expired.
 bool accepts(const String& token);

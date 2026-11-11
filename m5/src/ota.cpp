@@ -8,6 +8,8 @@
 #include <mbedtls/md.h>
 
 #include "config.h"
+#include "ota_pubkey.h"
+#include "ota_signature.h"
 
 // Arduino marks a new image valid as soon as it starts; ask it to leave that to update().
 bool verifyRollbackLater() { return true; }
@@ -29,6 +31,21 @@ bool failed = false;
 String failure;
 
 bool probationChecked = false;
+
+// A signed update (POST /ota/signed): the image is checked against `signature` once it is in.
+bool signedUpdate = false;
+constexpr size_t kMaxSignatureLength = 80;  // a P-256 DER signature is at most 72 bytes
+uint8_t signature[kMaxSignatureLength];
+size_t signatureLength = 0;
+
+/// An upload that stopped coming (the connection dropped) no longer holds the slot. With the lock.
+void dropStaleUpload() {
+    if (writing && millis() - lastWriteAt > 30000) {
+        Update.abort();
+        mbedtls_md_free(&sha);
+        writing = false;
+    }
+}
 
 struct Guard {
     Guard() { xSemaphoreTake(lock, portMAX_DELAY); }
@@ -75,16 +92,12 @@ Ticket prepare(size_t size, const char* sha256Hex) {
         return t;
     }
     Guard g;
-    if (writing && millis() - lastWriteAt > 30000) {
-        // An upload that stopped coming (the connection dropped): drop it.
-        Update.abort();
-        mbedtls_md_free(&sha);
-        writing = false;
-    }
+    dropStaleUpload();
     if (writing) {
         t.error = "busy";
         return t;
     }
+    signedUpdate = false;
     uint8_t raw[16];
     esp_fill_random(raw, sizeof raw);
     token = "";
@@ -102,9 +115,28 @@ Ticket prepare(size_t size, const char* sha256Hex) {
     return t;
 }
 
+bool signedEnabled() { return kPublicKeyLength > 0; }
+
+bool beginSigned(const String& signatureHex, size_t total) {
+    if (!signedEnabled() || !total || total > maxSize()) return false;
+    Guard g;
+    dropStaleUpload();
+    if (writing) return false;
+    size_t length = 0;
+    if (!ota_signature::hexToBytes(signatureHex.c_str(), signature, kMaxSignatureLength, length)) return false;
+    signatureLength = length;
+    signedUpdate = true;
+    // Handed on to write() like a token's update, with the size the body really has. There is no
+    // token for it: accepts() says no while a signed update is staged.
+    token = "";
+    tokenUsed = false;
+    expectedSize = total;
+    return true;
+}
+
 bool accepts(const String& candidate) {
     Guard g;
-    return token.length() && !tokenUsed && candidate == token &&
+    return !signedUpdate && token.length() && !tokenUsed && candidate == token &&
            millis() - tokenAt < config::kOtaTokenTtlMs;
 }
 
@@ -136,7 +168,15 @@ String finish() {
     uint8_t got[32];
     mbedtls_md_finish(&sha, got);
     mbedtls_md_free(&sha);
-    if (!failed && memcmp(got, expectedSha, sizeof got) != 0) fail("sha256");
+    bool wasSigned = signedUpdate;
+    signedUpdate = false;
+    if (!failed && wasSigned) {
+        // The image is only the next boot if it is the developer's.
+        if (!ota_signature::verify(kPublicKey, kPublicKeyLength, got, signature, signatureLength))
+            fail("signature");
+    } else if (!failed && memcmp(got, expectedSha, sizeof got) != 0) {
+        fail("sha256");
+    }
     if (!failed && Update.progress() != expectedSize) fail("size");
     if (failed) {
         Update.abort();

@@ -109,6 +109,7 @@ void handleInfo(AsyncWebServerRequest* req) {
     doc["firmware"] = STACKCHAN_FIRMWARE_VERSION;
     doc["built"] = __DATE__ " " __TIME__;
     doc["ota_max_size"] = ota::maxSize();
+    doc["ota_signed"] = ota::signedEnabled();
     {
         Guard g;
         doc["paired"] = hasKey;
@@ -326,6 +327,15 @@ void handleOtaBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t
     if (index > 0 && ownsUpload(req)) ota::write(data, len, index, total);
 }
 
+// POST /ota/signed?sig=…: no token, the signature in `sig` is checked once the image is in.
+void handleSignedOtaBody(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+    if (index == 0 && ota::beginSigned(req->arg("sig"), total) && ota::write(data, len, index, total)) {
+        req->_tempObject = malloc(1);
+        return;
+    }
+    if (index > 0 && ownsUpload(req)) ota::write(data, len, index, total);
+}
+
 void handleOtaDone(AsyncWebServerRequest* req) {
     if (!ownsUpload(req)) {
         // No valid token, a size other than announced, or an empty body: nothing was written.
@@ -354,6 +364,7 @@ void begin() {
     server.on(
         "/pair/start", HTTP_POST, [](AsyncWebServerRequest*) {}, nullptr, handlePairStart);
     server.on("/ota", HTTP_POST, handleOtaDone, nullptr, handleOtaBody);
+    server.on("/ota/signed", HTTP_POST, handleOtaDone, nullptr, handleSignedOtaBody);
     server.onNotFound([](AsyncWebServerRequest* req) { req->send(404); });
     server.begin();
 }

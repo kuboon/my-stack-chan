@@ -9,3 +9,6 @@ c++ -std=c++17 -Wall -Wextra -I"$here/../../src" "$here/test_pairing.cpp" "$here
 c++ -std=c++17 -Wall -Wextra -I"$here/../../src" "$here/test_actions.cpp" "$here/../../src/action_pieces.cpp" \
   -o "$out/test_actions"
 "$out/test_actions"
+c++ -std=c++17 -Wall -Wextra -I"$here/../../src" "$here/test_ota_signature.cpp" "$here/../../src/ota_signature.cpp" \
+  -lmbedcrypto -o "$out/test_ota_signature"
+"$out/test_ota_signature"

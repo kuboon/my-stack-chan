@@ -72,6 +72,28 @@ m5/tools/flash_koeact.sh            # ポートを指定するなら m5/tools/fl
 
 新しい版が 30 秒動けばそれに決まり、それより前に止まれば前の版に戻る。
 
+### Mac から署名つきで更新する
+
+iPad アプリを通さずに、署名した `firmware.bin` を Mac から送れる
+([プロトコル](../web/server/docs/protocol.md))。最初に 1 回だけ、署名鍵を作って公開鍵を
+入れた版を USB で書く:
+
+```sh
+m5/tools/ota_keygen.sh      # 鍵を ~/.config/stackchan/ota_signing.pem に作り、src/ota_pubkey.h を書く
+cd m5 && pio run -t upload  # 公開鍵の入った版を USB で 1 回だけ
+```
+
+そのあとは、ビルドして送るだけ:
+
+```sh
+cd m5 && pio run
+m5/tools/ota_push.sh stackchan-ab12.local   # 署名して POST /ota/signed
+```
+
+- `src/ota_pubkey.h` (公開鍵) はコミットしてよい。秘密鍵 (`ota_signing.pem`) は
+  コミットしない。なくすと、署名つきの更新はできなくなる (iPad アプリの OTA と USB は使える)。
+- 鍵を作り直したら、公開鍵の入った版をもう一度 USB (か iPad の OTA) で入れる。
+
 **パーティション表を変えたときは、1 回だけ USB で書き込み、モデルも書き直す**
 (`model` / `a2` の位置が変わるため):
 
