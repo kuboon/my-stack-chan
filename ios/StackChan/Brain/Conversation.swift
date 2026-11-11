@@ -29,6 +29,7 @@ final class Conversation {
     @ObservationIgnored var synthesizer: any SpeechSynthesizer = AppleSpeechSynthesizer()
 
     @ObservationIgnored private let link: DeviceLink
+    @ObservationIgnored private let body: DeviceBody
     @ObservationIgnored private var audio: AsyncStream<[Int16]>.Continuation?
     @ObservationIgnored private var transcription: Task<String, Error>?
     @ObservationIgnored private var speechStarted = false
@@ -37,6 +38,7 @@ final class Conversation {
 
     init(link: DeviceLink, body: DeviceBody) {
         self.link = link
+        self.body = body
         chat = FoundationModelsChat(body: body)
         body.onPhoto = { [weak self] in self?.lines.append(Line(role: .photo, image: $0)) }
         body.onNote = { [weak self] in self?.note($0) }
@@ -148,7 +150,16 @@ final class Conversation {
         var spoken: [String] = []
         speechStarted = false
         do {
-            for try await piece in chat.reply(to: text) {
+            // The plain requests are done here, not left to the model's tool calls (it sometimes
+            // says the tool's name instead of calling it); the model is told what happened.
+            let stream: AsyncThrowingStream<String, Error>
+            if let intent = SpokenIntent.parse(text) {
+                let result = await perform(intent)
+                stream = chat.reply(to: "（あなたはいま「\(text)」と頼まれて、\(result)。そのことを短く話して。道具は呼ばなくていい）")
+            } else {
+                stream = chat.reply(to: text)
+            }
+            for try await piece in stream {
                 for sentence in parser.append(piece) {
                     await speak(sentence, expression: parser.expression)
                     spoken.append(sentence)
@@ -171,6 +182,17 @@ final class Conversation {
             phase = .speaking  // until speak.done
         } else {
             finishWithoutSpeech()
+        }
+    }
+
+    /// Does what was asked. Returns what happened, in words for the model.
+    private func perform(_ intent: SpokenIntent) async -> String {
+        switch intent {
+        case .takePhoto:
+            return await body.takePhoto() ? "写真を撮った" : "写真を撮れなかった"
+        case .look(let direction):
+            body.look(direction)
+            return "\(direction.rawValue) を向いた"
         }
     }
 

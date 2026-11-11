@@ -55,8 +55,13 @@ private struct TakePhotoTool: Tool {
     let description = "スタックちゃんの顔のカメラで、目の前の写真を 1 枚撮る。写真を撮ってと頼まれたときに使う。"
     let body: any StackChanBody
 
+    // A tool with no arguments is not called by the on-device model, which writes its name as the
+    // reply instead ("takePhoto"); one argument, like look's, makes it a call.
     @Generable
-    struct Arguments {}
+    struct Arguments {
+        @Guide(description: "撮る理由を一言で。たとえば「頼まれたから」")
+        var reason: String
+    }
 
     func call(arguments: Arguments) async throws -> String {
         await body.takePhoto() ? "写真を撮りました。" : "写真を撮れませんでした。"
