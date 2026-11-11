@@ -363,8 +363,9 @@ void begin() {
     server.on("/pair/status", HTTP_GET, handlePairStatus);
     server.on(
         "/pair/start", HTTP_POST, [](AsyncWebServerRequest*) {}, nullptr, handlePairStart);
-    server.on("/ota", HTTP_POST, handleOtaDone, nullptr, handleOtaBody);
+    // /ota/signed first: a handler for "/ota" also takes every "/ota/…" that comes before it.
     server.on("/ota/signed", HTTP_POST, handleOtaDone, nullptr, handleSignedOtaBody);
+    server.on("/ota", HTTP_POST, handleOtaDone, nullptr, handleOtaBody);
     server.onNotFound([](AsyncWebServerRequest* req) { req->send(404); });
     server.begin();
 }
