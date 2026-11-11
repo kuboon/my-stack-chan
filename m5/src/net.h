@@ -13,6 +13,11 @@ enum class Mode { AP, STA };
 /// `onJoining` is called first with the SSID it tries, for the screen.
 void begin(void (*onJoining)(const String& ssid));
 
+/// In STA: starts mDNS. Call it once the heavy allocations of setup() are over: its timer runs on
+/// its own task and allocates from internal RAM, which loading the KoeAct model can use up
+/// (an allocation failure there ended in abort() and a reboot loop).
+void startMdns();
+
 Mode mode();
 /// `stackchan-XXXX`: the AP's SSID and the mDNS instance name.
 const String& name();

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <M5StackChan.h>
+#include <esp_heap_caps.h>
 
 #include "actions.h"
 #include "app_link.h"
@@ -292,7 +293,17 @@ void idleMotion() {
 
 }  // namespace
 
+void logHeap(const char* where) {
+    log_i("heap %s: internal free %u (largest %u), psram free %u", where,
+          unsigned(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+          unsigned(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+}
+
 void setup() {
+    // The first log creates stdio's lock; do it while there is memory, not in an out-of-memory
+    // path where creating it fails and abort()s.
+    logHeap("boot");
     M5StackChan.begin();
     settings::begin();
     screen::begin();
@@ -300,7 +311,11 @@ void setup() {
     net::begin(screen::showJoining);
     app_link::begin();
     // After Wi-Fi: ESP-DL takes internal RAM first while loading, and Wi-Fi needs its share.
+    logHeap("before commands");
     commands::begin();
+    logHeap("after commands");
+    net::startMdns();
+    logHeap("after mdns");
 }
 
 void loop() {

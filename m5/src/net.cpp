@@ -70,9 +70,6 @@ bool joinHome(const String& ssid, const String& password) {
         return false;
     }
     WiFi.setAutoReconnect(true);
-    MDNS.begin(hostname().c_str());
-    MDNS.setInstanceName(deviceName.c_str());
-    MDNS.addService("stackchan", "tcp", 80);
     return true;
 }
 
@@ -97,6 +94,13 @@ void begin(void (*onJoining)(const String& ssid)) {
     }
     startAp();
     WiFi.setSleep(false);
+}
+
+void startMdns() {
+    if (currentMode != Mode::STA) return;
+    MDNS.begin(hostname().c_str());
+    MDNS.setInstanceName(deviceName.c_str());
+    MDNS.addService("stackchan", "tcp", 80);
 }
 
 Mode mode() { return currentMode; }
