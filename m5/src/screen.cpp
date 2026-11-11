@@ -22,6 +22,14 @@ void hideAvatar() {
     }
 }
 
+/// The avatar's balloon leaves the display's text scale and datum as it likes (it sets them on
+/// M5.Lcd); a text screen starts from plain ones.
+void plainText() {
+    auto& d = M5.Display;
+    d.setTextSize(1);
+    d.setTextDatum(top_left);
+}
+
 void drawWifi(const String& ssid, const String& password, int y) {
     auto& d = M5.Display;
     String qr = "WIFI:T:WPA;S:" + ssid + ";P:" + password + ";;";
@@ -58,6 +66,7 @@ void showSetup(const String& ssid, const String& password, const String& note) {
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
+    plainText();
     drawWifi(ssid, password, 10);
     drawNote(note);
     d.setFont(&fonts::lgfxJapanGothic_16);
@@ -72,6 +81,7 @@ void showPairingCode(const String& code) {
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
+    plainText();
     d.setFont(&fonts::lgfxJapanGothic_16);
     d.setTextColor(TFT_WHITE, TFT_BLACK);
     d.setCursor(8, 12);
@@ -95,6 +105,7 @@ void showWaiting(const String& ssid, const String& password, const String& note)
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
+    plainText();
     drawWifi(ssid, password, 10);
     drawNote(note);
     d.setFont(&fonts::lgfxJapanGothic_16);
@@ -110,6 +121,7 @@ void showJoining(const String& ssid) {
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
+    plainText();
     d.setFont(&fonts::lgfxJapanGothic_16);
     d.setTextColor(TFT_WHITE, TFT_BLACK);
     d.setCursor(8, 90);
@@ -122,6 +134,7 @@ void showOnHomeWifi(const String& ssid, const String& host, const String& addres
     hideAvatar();
     auto& d = M5.Display;
     d.fillScreen(TFT_BLACK);
+    plainText();
     d.setFont(&fonts::lgfxJapanGothic_16);
     d.setTextColor(TFT_WHITE, TFT_BLACK);
     d.setCursor(8, 12);
